@@ -169,6 +169,7 @@ class AutoWeightsLoader:
 
         # Avoid infinite recursion since this function is typically
         # called inside load_weights of the module itself
+        logger.debug("Loading weights for module %s", base_prefix)
         if module != self.module:
             module_load_weights = getattr(module, "load_weights", None)
             if callable(module_load_weights):
@@ -224,6 +225,7 @@ class AutoWeightsLoader:
                 msg = (f"There is no module or parameter named '{prefix}' "
                        f"in {type(self.module).__name__}")
                 raise ValueError(msg)
+        logger.debug("Finished loading weights for module %s", base_prefix)
 
     def load_weights(
         self,

@@ -264,7 +264,7 @@ class Qwen2Model(nn.Module):
 
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__()
-
+        logger.debug("Initializing Qwen2Model")
         config = vllm_config.model_config.hf_config
         cache_config = vllm_config.cache_config
         quant_config = vllm_config.quant_config
@@ -312,6 +312,8 @@ class Qwen2Model(nn.Module):
             self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         else:
             self.norm = PPMissingLayer()
+        
+        logger.debug("Initialized Qwen2Model")
 
     def get_input_embeddings(self, input_ids: torch.Tensor) -> torch.Tensor:
         return self.embed_tokens(input_ids)
@@ -331,12 +333,14 @@ class Qwen2Model(nn.Module):
             else:
                 hidden_states = self.get_input_embeddings(input_ids)
             residual = None
+            logger.debug("Input embeddings shape: %s", hidden_states.shape)
         else:
             assert intermediate_tensors is not None
             hidden_states = intermediate_tensors["hidden_states"]
             residual = intermediate_tensors["residual"]
         for i in range(self.start_layer, self.end_layer):
             layer = self.layers[i]
+            logger.debug("Running layer info: %s", layer)
             hidden_states, residual = layer(
                 positions,
                 hidden_states,
@@ -344,12 +348,17 @@ class Qwen2Model(nn.Module):
                 attn_metadata,
                 residual,
             )
+            logger.debug("Layer output shape: %s, residual shape: %s",
+                         hidden_states.shape, residual.shape)
         if not get_pp_group().is_last_rank:
+            logger.debug("Layer output shape: %s, residual shape: %s",
+                         hidden_states.shape, residual.shape)
             return IntermediateTensors({
                 "hidden_states": hidden_states,
                 "residual": residual
             })
         hidden_states, _ = self.norm(hidden_states, residual)
+        logger.debug("Norm output shape: %s", hidden_states.shape)
         return hidden_states
 
     def load_weights(self, weights: Iterable[Tuple[str,

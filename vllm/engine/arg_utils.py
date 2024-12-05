@@ -1006,6 +1006,7 @@ class EngineArgs:
 
         device_config = DeviceConfig(device=self.device)
         model_config = self.create_model_config()
+        logger.debug(f"Model config: {model_config}")
 
         if model_config.is_multimodal_model:
             if self.enable_prefix_caching:
@@ -1027,6 +1028,7 @@ class EngineArgs:
             enable_prefix_caching=self.enable_prefix_caching,
             cpu_offload_gb=self.cpu_offload_gb,
         )
+        logger.debug(f"Cache config: {cache_config}")
         parallel_config = ParallelConfig(
             pipeline_parallel_size=self.pipeline_parallel_size,
             tensor_parallel_size=self.tensor_parallel_size,
@@ -1042,9 +1044,11 @@ class EngineArgs:
             distributed_executor_backend=self.distributed_executor_backend,
             worker_cls=self.worker_cls,
         )
+        logger.debug(f"Parallel config: {parallel_config}")
 
         max_model_len = model_config.max_model_len
         use_long_context = max_model_len > 32768
+        logger.debug(f"Max model len: {max_model_len}")
         if self.enable_chunked_prefill is None:
             # If not explicitly set, enable chunked prefill by default for
             # long context (> 32K) models. This is to avoid OOM errors in the
@@ -1111,6 +1115,7 @@ class EngineArgs:
             typical_acceptance_sampler_posterior_alpha,
             disable_logprobs=self.disable_logprobs_during_spec_decoding,
         )
+        logger.debug(f"Speculative config: {speculative_config}")
 
         # Reminder: Please update docs/source/usage/compatibility_matrix.rst
         # If the feature combo become valid
@@ -1155,6 +1160,7 @@ class EngineArgs:
             send_delta_data=(envs.VLLM_USE_RAY_SPMD_WORKER
                              and parallel_config.use_ray),
             policy=self.scheduling_policy)
+        logger.debug(f"Scheduler config: {scheduler_config}")
         lora_config = LoRAConfig(
             bias_enabled=self.enable_lora_bias,
             max_lora_rank=self.max_lora_rank,
@@ -1165,6 +1171,7 @@ class EngineArgs:
             lora_dtype=self.lora_dtype,
             max_cpu_loras=self.max_cpu_loras if self.max_cpu_loras
             and self.max_cpu_loras > 0 else None) if self.enable_lora else None
+        logger.debug(f"LoRA config: {lora_config}")
 
         if self.qlora_adapter_name_or_path is not None and \
             self.qlora_adapter_name_or_path != "":
@@ -1174,14 +1181,17 @@ class EngineArgs:
                 "qlora_adapter_name_or_path"] = self.qlora_adapter_name_or_path
 
         load_config = self.create_load_config()
+        logger.debug(f"Load config: {load_config}")
 
         prompt_adapter_config = PromptAdapterConfig(
             max_prompt_adapters=self.max_prompt_adapters,
             max_prompt_adapter_token=self.max_prompt_adapter_token) \
                                         if self.enable_prompt_adapter else None
+        logger.debug(f"Prompt adapter config: {prompt_adapter_config}")
 
         decoding_config = DecodingConfig(
             guided_decoding_backend=self.guided_decoding_backend)
+        logger.debug(f"Decoding config: {decoding_config}")
 
         detailed_trace_modules = []
         if self.collect_detailed_traces is not None:
@@ -1198,6 +1208,7 @@ class EngineArgs:
             collect_model_execute_time="worker" in detailed_trace_modules
             or "all" in detailed_trace_modules,
         )
+        logger.debug(f"Observability config: {observability_config}")
 
         config = VllmConfig(
             model_config=model_config,
@@ -1214,6 +1225,7 @@ class EngineArgs:
             compilation_config=self.compilation_config,
             kv_transfer_config=self.kv_transfer_config,
         )
+        logger.debug(f"Engine config: {config}")
 
         if envs.VLLM_USE_V1:
             self._override_v1_engine_config(config)

@@ -7,7 +7,9 @@ import torch
 from vllm.attention.backends.abstract import (AttentionBackend, AttentionImpl,
                                               AttentionMetadata, AttentionType)
 from vllm.vllm_flash_attn import flash_attn_varlen_func
+from vllm.logger import init_logger
 
+logger = init_logger(__name__)
 
 class FlashAttentionBackend(AttentionBackend):
 
@@ -72,6 +74,14 @@ class FlashAttentionImpl(AttentionImpl):
         blocksparse_params: Optional[Dict[str, Any]] = None,
         logits_soft_cap: Optional[float] = None,
     ) -> None:
+        logger.debug(f"Creating FlashAttentionImpl with "
+                     f"num_heads={num_heads}, head_size={head_size}, "
+                     f"scale={scale}, num_kv_heads={num_kv_heads}, "
+                     f"alibi_slopes={alibi_slopes}, "
+                     f"sliding_window={sliding_window}, "
+                     f"kv_cache_dtype={kv_cache_dtype}, "
+                     f"blocksparse_params={blocksparse_params}, "
+                     f"logits_soft_cap={logits_soft_cap}")
         if blocksparse_params is not None:
             raise ValueError(
                 "FlashAttention does not support block-sparse attention.")

@@ -15,8 +15,10 @@ logger = init_logger(__name__)
 
 def create_worker(**kwargs):
     vllm_config = kwargs.get("vllm_config")
+    logger.debug(f"Creating worker with vllm_config: {vllm_config}")
     wrapper = WorkerWrapperBase(vllm_config=vllm_config)
     wrapper.init_worker(**kwargs)
+    logger.debug("Created worker: %s", wrapper.worker)
     return wrapper.worker
 
 
@@ -56,6 +58,7 @@ class GPUExecutor(ExecutorBase):
                        local_rank: int = 0,
                        rank: int = 0,
                        distributed_init_method: Optional[str] = None):
+        logger.debug(f"Creating worker with local_rank={local_rank}, rank={rank}")
         return create_worker(**self._get_worker_kwargs(
             local_rank=local_rank,
             rank=rank,

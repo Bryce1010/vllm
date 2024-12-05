@@ -213,6 +213,7 @@ class GPUModelRunner:
         total_num_scheduled_tokens = scheduler_output.total_num_scheduled_tokens
         assert total_num_scheduled_tokens > 0
         num_reqs = self.input_batch.num_reqs
+        logger.debug("Preparing inputs for %d requests", num_reqs)
         assert num_reqs > 0
 
         # OPTIMIZATION: Start copying the block table first.
@@ -599,6 +600,7 @@ class GPUModelRunner:
         assert len(self.kv_caches) == 0
         kv_cache_shape = FlashAttentionBackend.get_kv_cache_shape(
             num_blocks, self.block_size, self.num_kv_heads, self.head_size)
+        logger.debug(f"KV cache shape: {kv_cache_shape}")
         for _ in range(self.num_attn_layers):
             self.kv_caches.append(
                 torch.zeros(kv_cache_shape,

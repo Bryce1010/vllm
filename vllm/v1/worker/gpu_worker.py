@@ -175,6 +175,7 @@ class Worker:
 
         max_seq_len = self.cache_config.block_size * num_gpu_blocks
         max_model_len = self.model_config.max_model_len
+        logger.debug(f"Max seq len: {max_seq_len}, Max model len: {max_model_len}")
         if max_model_len > max_seq_len:
             raise ValueError(
                 f"The model's max seq len ({max_model_len}) "

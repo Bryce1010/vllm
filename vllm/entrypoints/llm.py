@@ -192,7 +192,10 @@ class LLM:
                 compilation_config_instance = compilation_config
         else:
             compilation_config_instance = None
-
+        
+        # ==============================================================================
+        # 使用配置好的engine参数，初始化LLMEngine实例
+        # ==============================================================================
         engine_args = EngineArgs(
             model=model,
             task=task,
@@ -220,6 +223,7 @@ class LLM:
             compilation_config=compilation_config_instance,
             **kwargs,
         )
+        logger.debug("Init llm engine args: %s", engine_args)
         # Logic to switch between engines is done at runtime instead of import
         # to avoid import order issues
         self.engine_class = self.get_engine_class()
@@ -228,6 +232,10 @@ class LLM:
         self.llm_engine = self.engine_class.from_engine_args(
             engine_args, usage_context=UsageContext.LLM_CLASS)
 
+        # ==============================================================================
+        # 用于全局唯一的request_id，
+        # 在vLLM中内核引擎的处理中，1个prompt视为1个request，分配全局唯一的request_id
+        # ==============================================================================
         self.request_counter = Counter()
 
     @staticmethod
@@ -418,6 +426,10 @@ class LLM:
             # Use default sampling params.
             sampling_params = SamplingParams()
 
+        # ============================================================================
+        # 将request添加到engine中
+        # 在vLLM内核运算逻辑中，1个prompt算1个request，需要有1个全局唯一的request_id
+        # ============================================================================
         self._validate_and_add_requests(
             prompts=parsed_prompts,
             params=sampling_params,
@@ -426,6 +438,9 @@ class LLM:
             guided_options=guided_options_request,
             priority=priority)
 
+        # ============================================================================
+        # 把这个batch的所有prompt都添加完后，执行推理，详情参见_run_engine
+        # ============================================================================
         outputs = self._run_engine(use_tqdm=use_tqdm)
         return self.engine_class.validate_outputs(outputs, RequestOutput)
 
@@ -1041,6 +1056,11 @@ class LLM:
                 sp.output_kind = RequestOutputKind.FINAL_ONLY
 
         # Add requests to the engine.
+        # =======================================================================
+        # 将每个prompt添加进LLMEngine中，_add_request具体做了以下几件事：
+        # - 将每个prompt处理成特定的输入类型（SequenceGroup实例，后文会细说）
+        # - 将每个prompt加入Scheduler的waiting队列，等待处理
+        # =======================================================================
         for i, prompt in enumerate(prompts):
             self._add_request(
                 prompt,
@@ -1059,7 +1079,10 @@ class LLM:
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         priority: int = 0,
     ) -> None:
+        # 每个prompt赋1个request_id
+        logger.debug(f"Adding request: {prompt}")
         request_id = str(next(self.request_counter))
+        logger.debug(f"Request ID: {request_id}")
         self.llm_engine.add_request(
             request_id,
             prompt,
@@ -1105,12 +1128,21 @@ class LLM:
             )
 
         # Run the engine.
+        # ===========================================================================
+        # 如果当前调度器中还有没完成推理的请求（调度器中waiting/running/swapped任一队列非空）
+        # ===========================================================================
         outputs: List[Union[RequestOutput, PoolingRequestOutput]] = []
         total_in_toks = 0
         total_out_toks = 0
         while self.llm_engine.has_unfinished_requests():
+            # =========================================================================
+            # 执行1次推理调度（step），决定哪些请求的数据可以参与到这次推理中
+            # =========================================================================
             step_outputs = self.llm_engine.step()
             for output in step_outputs:
+                # =====================================================================
+                # 如果本step后，有请求已经完成了推理，就将推理结果装进outputs中
+                # =====================================================================
                 if output.finished:
                     outputs.append(output)
                     if use_tqdm:

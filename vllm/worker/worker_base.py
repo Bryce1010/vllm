@@ -421,6 +421,7 @@ class WorkerWrapperBase:
         trust_remote_code = vllm_config.model_config.trust_remote_code
         self.worker: Optional[WorkerBase] = None
         if trust_remote_code:
+            logger.debug("Trusting remote code. Initializing worker.")
             # note: lazy import to avoid importing torch before initializing
             from vllm.utils import init_cached_hf_modules
             init_cached_hf_modules()
@@ -449,6 +450,7 @@ class WorkerWrapperBase:
 
         worker_class = resolve_obj_by_qualname(
             self.vllm_config.parallel_config.worker_cls)
+        logger.debug(f"Initializing worker with worker_class: {worker_class}")
         self.worker = worker_class(*args, **kwargs)
         assert self.worker is not None
 

@@ -82,6 +82,7 @@ class ModelInputForGPU(ModelRunnerInputBase):
     """
     input_tokens: Optional[torch.Tensor] = None
     input_positions: Optional[torch.Tensor] = None
+    input_embeds: Optional[torch.Tensor] = None
     token_types: Optional[torch.Tensor] = None
     seq_lens: Optional[List[int]] = None
     query_lens: Optional[List[int]] = None
@@ -102,6 +103,7 @@ class ModelInputForGPU(ModelRunnerInputBase):
         tensor_dict = {
             "input_tokens": self.input_tokens,
             "input_positions": self.input_positions,
+            "input_embeds": self.input_embeds,
             "lora_requests": self.lora_requests,
             "lora_mapping": self.lora_mapping,
             "multi_modal_kwargs": self.multi_modal_kwargs,
@@ -203,6 +205,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
             self.lora_requests.clear()  # type: ignore
             self.prompt_adapter_index_mapping.clear()  # type: ignore
             self.prompt_adapter_prompt_mapping.clear()  # type: ignore
+            logger.debug("Simple reinit")
 
         def __init__(
             self,
@@ -481,6 +484,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
         """Compute context length, sequence length and tokens
         for the given sequence data.
         """
+        logger.debug("Computing lens for seq_idx=%d", seq_idx)
         seq_data = seq_group_metadata.seq_data[inter_data.seq_ids[seq_idx]]
         token_chunk_size = seq_group_metadata.token_chunk_size
 
@@ -500,6 +504,8 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
         # Compute tokens.
         tokens = seq_data.get_token_ids()[context_len:seq_len]
         token_types = seq_group_metadata.token_type_ids
+        logger.debug("Computed tokens: %s, context_len=%d, seq_len=%d",
+                     tokens, context_len, seq_len)
 
         inter_data.seq_lens[seq_idx] = seq_len
         inter_data.orig_seq_lens[seq_idx] = seq_len
@@ -520,6 +526,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
                     context_len,
                     seq_len,
                 )
+        logger.debug("Computed lens for seq_idx=%d", seq_idx)
 
     def _compute_for_prefix_cache_hit(
             self, inter_data: InterDataForSeqGroup, seq_idx: int,
@@ -535,6 +542,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
                             and len(computed_block_nums) > 0
                             and self.sliding_window is None
                             and inter_data.is_prompt)
+        logger.debug("Prefix cache hit: %s", prefix_cache_hit)
         inter_data.prefix_cache_hit = prefix_cache_hit
 
         if not prefix_cache_hit:
@@ -1301,6 +1309,8 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
 
         # Run the model with the dummy inputs.
         num_layers = self.model_config.get_num_layers(self.parallel_config)
+        logger.debug("Profiling model with seqs len:  %s, batch_size: %s, num_layers: %s",
+                     len(seqs), batch_size, num_layers)
         # use an empty tensor instead of `None`` to force Dynamo to pass
         # it by reference, rather by specializing on the value ``None``.
         # the `dtype` argument does not matter, and we use `float32` as
@@ -1312,9 +1322,13 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
             torch.tensor([], dtype=torch.float32, device=self.device)
             for _ in range(num_layers)
         ]
+        logger.debug("Profiling model with kv_caches len: %s", len(kv_caches))
         finished_requests_ids = [seq.request_id for seq in seqs]
+        logger.debug("Profiling model with finished_requests_ids: %s",
+                     finished_requests_ids)
         model_input = self.prepare_model_input(
             seqs, finished_requests_ids=finished_requests_ids)
+        # logger.debug("Profiling model with model input: %s", model_input)
         intermediate_tensors = None
         if not get_pp_group().is_first_rank:
             intermediate_tensors = self.model.make_empty_intermediate_tensors(

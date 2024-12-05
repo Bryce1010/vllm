@@ -9,10 +9,10 @@ def create_test_prompts() -> List[Tuple[str, SamplingParams]]:
     """Create a list of test prompts with their sampling parameters."""
     return [
         ("A robot may not injure a human being",
-         SamplingParams(temperature=0.0, logprobs=1, prompt_logprobs=1)),
-        ("To be or not to be,",
+         SamplingParams(temperature=0.0, logprobs=1, prompt_logprobs=1, stop=["but"])),
+        (" To be or not to be,",
          SamplingParams(temperature=0.8, top_k=5, presence_penalty=0.2)),
-        ("What is the meaning of life?",
+        (" What is the meaning of life?",
          SamplingParams(n=2,
                         best_of=5,
                         temperature=0.8,
@@ -30,13 +30,15 @@ def process_requests(engine: LLMEngine,
         if test_prompts:
             prompt, sampling_params = test_prompts.pop(0)
             engine.add_request(str(request_id), prompt, sampling_params)
-            request_id += 1
+            request_id = 0
 
         request_outputs: List[RequestOutput] = engine.step()
 
         for request_output in request_outputs:
             if request_output.finished:
-                print(request_output)
+                print(f"Finished request output: {request_output}")
+            else:
+                print(f"Partial request output: {request_output}")
 
 
 def initialize_engine(args: argparse.Namespace) -> LLMEngine:

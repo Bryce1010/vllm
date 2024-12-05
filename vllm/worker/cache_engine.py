@@ -18,6 +18,7 @@ class CacheEngine:
     This class is responsible for initializing and managing the GPU and CPU KV
     caches. It also provides methods for performing KV cache operations, such
     as swapping and copying.
+    CacheEngine 负责管理实际的缓存数据，确保所有的计算任务都有合适的资源可用。
     """
 
     def __init__(
@@ -59,6 +60,7 @@ class CacheEngine:
                                              model_config.is_attention_free)
 
         # Initialize the cache.
+        logger.debug("Initializing the cache.")
         self.gpu_cache = self._allocate_kv_cache(
             self.num_gpu_blocks, self.device_config.device_type)
         self.cpu_cache = self._allocate_kv_cache(self.num_cpu_blocks, "cpu")
@@ -82,6 +84,7 @@ class CacheEngine:
                             dtype=self.dtype,
                             pin_memory=pin_memory,
                             device=device))
+        logger.debug(f"Allocated {num_blocks} blocks on {device}, kv_cache_shape: {kv_cache_shape}")
         return kv_cache
 
     def swap_in(self, src_to_dst: torch.Tensor) -> None:
