@@ -1,51 +1,63 @@
+from transformers import AutoTokenizer
+import torch
+from vllm.logger import init_logger
+import argparse
+from typing import List, Tuple
 
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from vllm import EngineArgs, LLMEngine, RequestOutput, SamplingParams
+from vllm.utils import FlexibleArgumentParser
+from vllm.inputs.data import TextPrompt, TokensPrompt
 
-model_name = "Qwen/Qwen2.5-7B-Instruct"
+logger = init_logger("vllm")
 
-model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    torch_dtype="auto",
-    device_map="auto"
-)
-tokenizer = AutoTokenizer.from_pretrained(model_name)
+def create_test_prompts() -> List[Tuple[TextPrompt, SamplingParams]]:
+    """Create a list of test prompts with their sampling parameters."""
+    hidden_states = torch.load("./examples/hidden_states.pt")
+    logger.info(f"Hidden states shape: {hidden_states.shape}")
+    logger.info(f"Hidden states: {hidden_states}")
 
-prompt = "Give me a short introduction to large language model."
-messages = [
-    {"role": "system", "content": "You are Qwen, created by Alibaba Cloud. You are a helpful assistant."},
-    {"role": "user", "content": prompt}
-]
-text = tokenizer.apply_chat_template(
-    messages,
-    tokenize=False,
-    add_generation_prompt=True
-)
+    return [
+        (TextPrompt(prompt_embeds=hidden_states),
+         SamplingParams(temperature=0.0, logprobs=1, prompt_logprobs=1, stop=["but"]))
+    ]
 
+def process_requests(engine: LLMEngine,
+                     test_prompts: List[Tuple[TextPrompt, SamplingParams]]):
+    """Continuously process a list of prompts and handle the outputs."""
+    request_id = 0
 
-######### raw
-model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+    while test_prompts or engine.has_unfinished_requests():
+        if test_prompts:
+            prompt, sampling_params = test_prompts.pop(0)
+            engine.add_request(str(request_id), prompt, sampling_params)
+            request_id = 0
 
-generated_ids = model.generate(
-    **model_inputs,
-    max_new_tokens=512
-)
+        request_outputs: List[RequestOutput] = engine.step()
 
-############
+        for request_output in request_outputs:
+            if request_output.finished:
+                logger.info(f"Finished request output: {request_output}")
+                logger.info(f"Finished generate token ids: {request_output.outputs[0].token_ids}")
+                logger.info(f"Finished generated text: {request_output.outputs[0].text}")
+            else:
+                logger.info(f"Partial request output: {request_output}")
+                logger.info(f"Partial generate token ids: {request_output.outputs[0].token_ids}")
+                logger.info(f"Partial generated text: {request_output.outputs[0].text}")
 
-######## input_embeddings
-tokens = tokenizer.encode(text, return_tensors="pt")
-input_embeddings = model.get_input_embeddings()(tokens)[:, :5, :]
+def initialize_engine(args: argparse.Namespace) -> LLMEngine:
+    """Initialize the LLMEngine from the command line arguments."""
+    engine_args = EngineArgs.from_cli_args(args)
+    return LLMEngine.from_engine_args(engine_args)
 
-generated_ids = model.generate(
-    input_embeddings=input_embeddings,
-    max_new_tokens=512
-)
+def main(args: argparse.Namespace):
+    """Main function that sets up and runs the prompt processing."""
+    engine = initialize_engine(args)
+    test_prompts = create_test_prompts()
+    process_requests(engine, test_prompts)
 
-
-###########
-
-generated_ids = [
-    output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
-]
-
-response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+if __name__ == '__main__':
+    parser = FlexibleArgumentParser(
+        description='Demo on using the LLMEngine class directly')
+    parser = EngineArgs.add_cli_args(parser)
+    args = parser.parse_args()
+    main(args)

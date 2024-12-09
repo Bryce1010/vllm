@@ -602,6 +602,7 @@ class GPUModelRunner:
             num_blocks, self.block_size, self.num_kv_heads, self.head_size)
         logger.debug(f"KV cache shape: {kv_cache_shape}")
         for _ in range(self.num_attn_layers):
+            logger.debug(f"Creating KV cache attn layer {_}")
             self.kv_caches.append(
                 torch.zeros(kv_cache_shape,
                             dtype=self.kv_cache_dtype,

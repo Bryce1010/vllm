@@ -36,12 +36,28 @@ DEFAULT_LOGGING_CONFIG = {
             "level": VLLM_LOGGING_LEVEL,
             "stream": "ext://sys.stdout",
         },
+        # 新增一个handler，用于输出到文件
+        "vllm_file": {
+            "class": "logging.handlers.TimedRotatingFileHandler",
+            "formatter": "vllm",
+            "level": VLLM_LOGGING_LEVEL,
+            "filename": "vllm.log",
+            "when": "midnight",
+            "backupCount": 7,
+            "encoding": "utf-8",
+            "delay": False
+        }
     },
     "loggers": {
         "vllm": {
-            "handlers": ["vllm"],
+            "handlers": ["vllm", "vllm_file"],
             "level": "DEBUG",
             "propagate": False,
+        },
+        "examples": {
+            "handlers": ["vllm", "vllm_file"],
+            "level": "DEBUG",
+            "propagate": True,
         },
     },
     "version": 1,
@@ -81,6 +97,17 @@ def _configure_vllm_root_logger() -> None:
             formatter["class"] = "vllm.logging_utils.NewLineFormatter"
 
     if logging_config:
+        # 为文件 handler 设定正确的日志文件路径
+        logs_dir = "logs"
+        if not os.path.exists(logs_dir):
+            os.makedirs(logs_dir)
+        
+        # 使用当前时间生成唯一日志文件名
+        log_file_name = datetime.datetime.now().strftime("%Y-%m-%d") + ".log"
+        # 获取handlers中的vllm_file handler，并设定filename
+        if "handlers" in logging_config and "vllm_file" in logging_config["handlers"]:
+            logging_config["handlers"]["vllm_file"]["filename"] = os.path.join(logs_dir, log_file_name)
+
         dictConfig(logging_config)
 
 

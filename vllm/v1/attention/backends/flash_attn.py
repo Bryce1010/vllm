@@ -134,6 +134,12 @@ class FlashAttentionImpl(AttentionImpl):
         Returns:
             shape = [num_tokens, num_heads * head_size]
         """
+        logger.debug(f"FlashAttentionImpl.forward with "
+                     f"query.shape={query.shape}, key.shape={key.shape}, "
+                     f"value.shape={value.shape}, kv_cache.shape={kv_cache.shape}, "
+                     f"attn_metadata={attn_metadata}, k_scale={k_scale}, "
+                     f"v_scale={v_scale}, attn_type={attn_type}, "
+                     f"output.shape={output.shape if output is not None else None}")
         if attn_type != AttentionType.DECODER:
             raise NotImplementedError("Encoder self-attention and "
                                       "encoder/decoder cross-attention "
@@ -164,6 +170,8 @@ class FlashAttentionImpl(AttentionImpl):
         # value[:num_actual_tokens] because the reshape_and_cache_flash op uses
         # the slot_mapping's shape to determine the number of actual tokens.
         key_cache, value_cache = kv_cache.unbind(0)
+        logger.debug(f"key_cache.shape={key_cache.shape}, value_cache.shape={value_cache.shape}")
+        
         torch.ops._C_cache_ops.reshape_and_cache_flash(
             key,
             value,
@@ -192,5 +200,8 @@ class FlashAttentionImpl(AttentionImpl):
             block_table=attn_metadata.block_table,
             softcap=self.logits_soft_cap,
         )
+        logger.debug(f"query[:num_actual_tokens].shape={query[:num_actual_tokens].shape}, "
+                     f"key_cache.shape={key_cache.shape}, value_cache.shape={value_cache.shape}, "
+                     f"output[:num_actual_tokens].shape={output[:num_actual_tokens].shape}")
 
         return output

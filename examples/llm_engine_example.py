@@ -40,7 +40,6 @@ def process_requests(engine: LLMEngine,
             else:
                 print(f"Partial request output: {request_output}")
 
-
 def initialize_engine(args: argparse.Namespace) -> LLMEngine:
     """Initialize the LLMEngine from the command line arguments."""
     engine_args = EngineArgs.from_cli_args(args)

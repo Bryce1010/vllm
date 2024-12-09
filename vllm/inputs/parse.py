@@ -7,7 +7,9 @@ from vllm.utils import is_list_of
 from .data import (EncoderDecoderInputs, ExplicitEncoderDecoderPrompt,
                    ProcessorInputs, PromptType, SingletonPrompt, TextPrompt,
                    TokensPrompt)
+from vllm.logger import init_logger
 
+logger = init_logger(__name__)
 
 class ParsedText(TypedDict):
     content: str
@@ -87,12 +89,15 @@ def parse_singleton_prompt(
     prompt: SingletonPrompt,
 ) -> Union[ParsedStrPrompt, ParsedTextPrompt, ParsedTokensPrompt]:
     if isinstance(prompt, str):
+        logger.debug(f"Prompt is a string: {prompt}")
         return ParsedStrPrompt(type="str", content=prompt)
     elif isinstance(prompt, dict):
         if "prompt_token_ids" in prompt:
+            logger.debug(f"Prompt is a tokens prompt: {prompt}")
             return ParsedTokensPrompt(type="tokens",
                                       content=prompt)  # type: ignore
         elif "prompt" in prompt:
+            logger.debug(f"Prompt is a prompt: {prompt}")
             return ParsedTextPrompt(type="text", content=prompt)
 
     raise TypeError("inputs must be a string, TextPrompt, or TokensPrompt")

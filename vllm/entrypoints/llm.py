@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from typing import (Any, ClassVar, Dict, List, Optional, Sequence, Tuple, Type,
                     Union, cast, overload)
 
+import torch
 from tqdm import tqdm
 from typing_extensions import deprecated
 
@@ -351,6 +352,7 @@ class LLM:
         sampling_params: Optional[Union[SamplingParams,
                                         Sequence[SamplingParams]]] = None,
         prompt_token_ids: Optional[Union[List[int], List[List[int]]]] = None,
+        prompt_embeds: Optional[torch.tensor] = None,
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
@@ -414,6 +416,8 @@ class LLM:
             parsed_prompts = cast(Union[PromptType, Sequence[PromptType]],
                                   prompts)
 
+        if prompt_embeds is not None:
+            parsed_prompts.prompt_embeds = prompt_embeds
         if isinstance(guided_options_request, dict):
             if len(guided_options_request) > 1:
                 raise ValueError(
@@ -978,6 +982,7 @@ class LLM:
         self,
         prompts: Optional[Union[str, List[str]]],
         prompt_token_ids: Optional[Union[List[int], List[List[int]]]],
+        prompt_embeds: Optional[torch.tensor] = None,
     ):
         # skip_tokenizer_init is now checked in engine
 
