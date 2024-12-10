@@ -224,6 +224,7 @@ def advance_step_flashattn(num_seqs: int, num_queries: int, block_size: int,
                            seq_lens: torch.Tensor, slot_mapping: torch.Tensor,
                            block_tables: torch.Tensor) -> None:
     """Advance a step on GPU for existing inputs for a multi-step runner"""
+    logger.debug("advance_step_flashattn in cuda")
     return torch.ops._C.advance_step_flashattn(num_seqs, num_queries,
                                                block_size, input_tokens,
                                                sampled_token_ids,

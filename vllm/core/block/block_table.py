@@ -4,7 +4,8 @@ from typing import List, Optional
 from vllm.core.block.common import BlockList
 from vllm.core.block.interfaces import Block, DeviceAwareBlockAllocator
 from vllm.utils import Device, cdiv, chunk_list
-
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 class BlockTable:
     """A class to manage blocks for a specific sequence.
@@ -45,6 +46,8 @@ class BlockTable:
         _blocks: Optional[List[Block]] = None,
         max_block_sliding_window: Optional[int] = None,
     ):
+        logger.debug(f"Creating BlockTable with block_size={block_size}, "
+                     f"max_block_sliding_window={max_block_sliding_window}")
         self._block_size = block_size
         self._allocator = block_allocator
         if _blocks is None:
@@ -91,11 +94,13 @@ class BlockTable:
             device (Device, optional): The device on which the blocks should be
                 allocated. Defaults to Device.GPU.
         """
+        logger.debug(f"[block_table] Allocating blocks for {len(token_ids)} tokens")
         assert not self._is_allocated
         assert token_ids
         blocks = self._allocate_blocks_for_token_ids(prev_block=None,
                                                      token_ids=token_ids,
                                                      device=device)
+        logger.debug(f"[block_table] Allocated {len(blocks)} blocks")
         self.update(blocks)
         self._num_full_slots = len(token_ids)
 

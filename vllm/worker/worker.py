@@ -49,6 +49,7 @@ class Worker(LocalOrDistributedWorkerBase):
         is_driver_worker: bool = False,
         model_runner_cls: Optional[Type[GPUModelRunnerBase]] = None,
     ) -> None:
+        logger.debug(f"Initializing Worker: local_rank={local_rank}, rank={rank}, distributed_init_method={distributed_init_method}, is_driver_worker={is_driver_worker}")
         WorkerBase.__init__(self, vllm_config)
         self.parallel_config.rank = rank
         self.local_rank = local_rank
@@ -123,7 +124,9 @@ class Worker(LocalOrDistributedWorkerBase):
         self.profiler.stop()
 
     def init_device(self) -> None:
+        logger.debug(f"Initializing device with local_rank={self.local_rank}, rank={self.rank}")
         if self.device_config.device.type == "cuda":
+            logger.debug(f"Initializing device in cuda with local_rank={self.local_rank}, rank={self.rank}")
             # torch.distributed.all_reduce does not free the input tensor until
             # the synchronization point. This causes the memory usage to grow
             # as the number of all_reduce calls increases. This env var disables
@@ -141,6 +144,7 @@ class Worker(LocalOrDistributedWorkerBase):
             gc.collect()
             torch.cuda.empty_cache()
             self.init_gpu_memory = torch.cuda.mem_get_info()[0]
+            logger.debug(f"GPU memory at init: {self.init_gpu_memory}")
         else:
             raise RuntimeError(
                 f"Not support device type: {self.device_config.device}")
@@ -345,18 +349,22 @@ class Worker(LocalOrDistributedWorkerBase):
 
     @torch.inference_mode()
     def execute_worker(self, worker_input: WorkerInput) -> None:
+        logger.debug(f"Executing worker with worker_input: {worker_input}")
         virtual_engine = worker_input.virtual_engine
         # Issue cache operations.
         if (worker_input.blocks_to_swap_in is not None
                 and worker_input.blocks_to_swap_in.numel() > 0):
+            logger.debug(f"Swapping in blocks: {worker_input.blocks_to_swap_in}")
             self.cache_engine[virtual_engine].swap_in(
                 worker_input.blocks_to_swap_in)
         if (worker_input.blocks_to_swap_out is not None
                 and worker_input.blocks_to_swap_out.numel() > 0):
+            logger.debug(f"Swapping out blocks: {worker_input.blocks_to_swap_out}")
             self.cache_engine[virtual_engine].swap_out(
                 worker_input.blocks_to_swap_out)
         if (worker_input.blocks_to_copy is not None
                 and worker_input.blocks_to_copy.numel() > 0):
+            logger.debug(f"Copying blocks: {worker_input.blocks_to_copy}")
             self.cache_engine[virtual_engine].copy(worker_input.blocks_to_copy)
 
     def _get_cached_seq_group_metadata(
@@ -464,6 +472,7 @@ def init_worker_distributed_environment(
     local_rank: int = -1,
 ) -> None:
     """Initialize the distributed environment."""
+    logger.debug(f"Initializing distributed environment with rank={rank}")
     parallel_config = vllm_config.parallel_config
     set_custom_all_reduce(not parallel_config.disable_custom_all_reduce)
 

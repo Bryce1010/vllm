@@ -12,6 +12,8 @@ from vllm.core.block.utils import check_no_caching_or_swa_for_blockmgr_encdec
 from vllm.core.interfaces import AllocStatus, BlockSpaceManager
 from vllm.sequence import Sequence, SequenceGroup, SequenceStatus
 from vllm.utils import Device
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 SeqId = int
 EncoderSeqId = str
@@ -66,6 +68,7 @@ class SelfAttnBlockSpaceManager(BlockSpaceManager):
         sliding_window: Optional[int] = None,
         enable_caching: bool = False,
     ) -> None:
+        logger.debug(f"Creating SelfAttnBlockSpaceManager with: block_size={block_size}, num_gpu_blocks={num_gpu_blocks}, num_cpu_blocks={num_cpu_blocks}, watermark={watermark}, sliding_window={sliding_window}, enable_caching={enable_caching}")
         self.block_size = block_size
         self.num_total_gpu_blocks = num_gpu_blocks
         self.num_total_cpu_blocks = num_cpu_blocks
@@ -87,8 +90,10 @@ class SelfAttnBlockSpaceManager(BlockSpaceManager):
         assert watermark >= 0.0
 
         self.enable_caching = enable_caching
+        logger.debug(f"enable_caching={enable_caching}")
 
         self.watermark_blocks = int(watermark * num_gpu_blocks)
+        logger.debug(f"watermark_blocks={self.watermark_blocks}")
 
         self.block_allocator = CpuGpuBlockAllocator.create(
             allocator_type="prefix_caching" if enable_caching else "naive",
@@ -100,8 +105,10 @@ class SelfAttnBlockSpaceManager(BlockSpaceManager):
         self.block_tables: Dict[SeqId, BlockTable] = {}
         self.cross_block_tables: Dict[EncoderSeqId, BlockTable] = {}
 
+        logger.debug(f"create computed_blocks_tracker")
         self._computed_blocks_tracker = ComputedBlocksTracker(
             self.block_allocator, self.block_size, self.enable_caching)
+        logger.debug(f"create last_access_blocks_tracker")
         self._last_access_blocks_tracker = LastAccessBlocksTracker(
             self.block_allocator)
 
@@ -110,15 +117,17 @@ class SelfAttnBlockSpaceManager(BlockSpaceManager):
                      num_lookahead_slots: int = 0) -> AllocStatus:
         # FIXME(woosuk): Here we assume that all sequences in the group share
         # the same prompt. This may not be true for preempted sequences.
-
+        logger.debug(f"can_allocate: seq_group={seq_group}, num_lookahead_slots={num_lookahead_slots}")
         check_no_caching_or_swa_for_blockmgr_encdec(self, seq_group)
 
         seq = seq_group.get_seqs(status=SequenceStatus.WAITING)[0]
+        logger.debug(f"waiting seq: {seq}")
         num_required_blocks = BlockTable.get_num_required_blocks(
             seq.get_token_ids(),
             block_size=self.block_size,
             num_lookahead_slots=num_lookahead_slots,
         )
+        logger.debug(f"num_required_blocks={num_required_blocks}")
 
         if seq_group.is_encoder_decoder():
             encoder_seq = seq_group.get_encoder_seq()
@@ -134,14 +143,18 @@ class SelfAttnBlockSpaceManager(BlockSpaceManager):
 
         num_free_gpu_blocks = self.block_allocator.get_num_free_blocks(
             device=Device.GPU)
+        logger.debug(f"num_free_gpu_blocks={num_free_gpu_blocks}")
 
         # Use watermark to avoid frequent cache eviction.
         if (self.num_total_gpu_blocks - num_required_blocks <
                 self.watermark_blocks):
+            logger.debug(f"AllocStatus.NEVER")
             return AllocStatus.NEVER
         if num_free_gpu_blocks - num_required_blocks >= self.watermark_blocks:
+            logger.debug(f"AllocStatus.OK")
             return AllocStatus.OK
         else:
+            logger.debug(f"AllocStatus.LATER")
             return AllocStatus.LATER
 
     def _allocate_sequence(self, seq: Sequence) -> BlockTable:
@@ -157,6 +170,7 @@ class SelfAttnBlockSpaceManager(BlockSpaceManager):
         return block_table
 
     def allocate(self, seq_group: SequenceGroup) -> None:
+        logger.debug(f"allocate: seq_group={seq_group}")
 
         # Allocate self-attention block tables for decoder sequences
         waiting_seqs = seq_group.get_seqs(status=SequenceStatus.WAITING)
@@ -210,6 +224,7 @@ class SelfAttnBlockSpaceManager(BlockSpaceManager):
         for known tokens. The contents of the lookahead slots are not defined.
         This is used by speculative decoding when speculating future tokens.
         """
+        logger.debug(f"can_append_slots: seq_group={seq_group}, num_lookahead_slots={num_lookahead_slots}")
 
         num_touched_blocks = 0
         for seq in seq_group.get_seqs(status=SequenceStatus.RUNNING):
@@ -224,6 +239,7 @@ class SelfAttnBlockSpaceManager(BlockSpaceManager):
 
         num_free_gpu_blocks = self.block_allocator.get_num_free_blocks(
             Device.GPU)
+        logger.debug(f"num_touched_blocks={num_touched_blocks}, num_free_gpu_blocks={num_free_gpu_blocks}")
         return num_touched_blocks <= num_free_gpu_blocks
 
     def append_slots(
@@ -283,6 +299,7 @@ class SelfAttnBlockSpaceManager(BlockSpaceManager):
 
     def access_all_blocks_in_seq(self, seq: Sequence, now: float):
         if self.enable_caching:
+            logger.debug(f"access_all_blocks_in_seq: seq={seq}, now={now}")
             # Record the latest access time for the sequence. The actual update
             # of the block ids is deferred to the sequence free(..) call, since
             # only during freeing of block ids, the blocks are actually added to
@@ -297,6 +314,7 @@ class SelfAttnBlockSpaceManager(BlockSpaceManager):
         # right after they have been scheduled (for prefill). This assumes
         # the scheduler is synchronous so blocks are actually computed when
         # scheduling the next batch.
+        logger.debug(f"mark_blocks_as_computed: seq_group={seq_group}, token_chunk_size={token_chunk_size}")
         self.block_allocator.mark_blocks_as_computed([])
 
     def get_common_computed_block_ids(

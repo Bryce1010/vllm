@@ -14,6 +14,7 @@ logger = init_logger(__name__)
 
 
 def create_worker(**kwargs):
+    logger.debug(f"Creating worker with kwargs: {kwargs}")
     vllm_config = kwargs.get("vllm_config")
     logger.debug(f"Creating worker with vllm_config: {vllm_config}")
     wrapper = WorkerWrapperBase(vllm_config=vllm_config)
@@ -29,12 +30,17 @@ class GPUExecutor(ExecutorBase):
     def _init_executor(self) -> None:
         """Initialize the worker and load the model.
         """
+        logger.debug(f"Initializing GPUExecutor with parallel_config: {self.parallel_config}")
         assert self.parallel_config.world_size == 1, (
             "GPUExecutor only supports single GPU.")
 
         self.driver_worker = self._create_worker()
+        logger.debug(f"Driver worker: {self.driver_worker}")
         self.driver_worker.init_device()
+        logger.debug(f"Driver worker device: {self.driver_worker.device}")
+        logger.debug(f"Driver worker loaded model")
         self.driver_worker.load_model()
+        
 
     def _get_worker_kwargs(
             self,
@@ -42,6 +48,7 @@ class GPUExecutor(ExecutorBase):
             rank: int = 0,
             distributed_init_method: Optional[str] = None) -> Dict[str, Any]:
         """Return worker init args for a given rank."""
+        logger.debug(f"Getting worker kwargs with local_rank={local_rank}, rank={rank}")
         if distributed_init_method is None:
             distributed_init_method = get_distributed_init_method(
                 get_ip(), get_open_port())
@@ -68,6 +75,7 @@ class GPUExecutor(ExecutorBase):
         """Determine the number of available KV blocks by invoking the
         underlying worker.
         """
+        logger.debug(f"Determining num available blocks: {self.driver_worker.determine_num_available_blocks()}")
         return self.driver_worker.determine_num_available_blocks()
 
     def initialize_cache(self, num_gpu_blocks: int, num_cpu_blocks) -> None:
@@ -88,7 +96,9 @@ class GPUExecutor(ExecutorBase):
     def execute_model(
         self, execute_model_req: ExecuteModelRequest
     ) -> Optional[List[Union[SamplerOutput, PoolerOutput]]]:
+        logger.debug(f"Executing model in gpu with execute_model_req: {execute_model_req}")
         output = self.driver_worker.execute_model(execute_model_req)
+        logger.debug(f"Executed model in gpu with output: {output}")
         return output
 
     def add_lora(self, lora_request: LoRARequest) -> bool:
@@ -131,9 +141,11 @@ class GPUExecutor(ExecutorBase):
         return
 
     def start_profile(self) -> None:
+        logger.debug(f"Starting profile")
         self.driver_worker.start_profile()
 
     def stop_profile(self) -> None:
+        logger.debug(f"Stopping profile")
         self.driver_worker.stop_profile()
 
 
@@ -143,6 +155,7 @@ class GPUExecutorAsync(GPUExecutor, ExecutorAsyncBase):
         self,
         execute_model_req: ExecuteModelRequest,
     ) -> List[Union[SamplerOutput, PoolerOutput]]:
+        logger.debug(f"Executing model async with execute_model_req: {execute_model_req}")
         output = await make_async(self.driver_worker.execute_model
                                   )(execute_model_req=execute_model_req)
         return output

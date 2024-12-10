@@ -22,6 +22,13 @@ class KVCacheManager:
         enable_caching: bool = True,
         num_preallocate_tokens: int = 64,
     ) -> None:
+        logger.debug(f"Initializing KVCacheManager with "
+                        f"block_size={block_size}, "
+                        f"num_gpu_blocks={num_gpu_blocks}, "
+                        f"max_model_len={max_model_len}, "
+                        f"sliding_window={sliding_window}, "
+                        f"enable_caching={enable_caching}, "
+                        f"num_preallocate_tokens={num_preallocate_tokens}")
         self.block_size = block_size
         self.num_gpu_blocks = num_gpu_blocks
         self.max_model_len = max_model_len
@@ -42,12 +49,14 @@ class KVCacheManager:
         self.num_preallocate_blocks = cdiv(num_preallocate_tokens, block_size)
 
         # A Block pool of all kv-cache blocks.
+        logger.debug(f"Initializing block pool with {num_gpu_blocks} blocks")
         self.block_pool: List[KVCacheBlock] = [
             KVCacheBlock(idx) for idx in range(num_gpu_blocks)
         ]
         # Free block queue that constructs and manipulates a doubly linked
         # list of free blocks (including eviction candidates when caching is
         # enabled).
+        logger.debug(f"Initializing free block queue with {num_gpu_blocks} blocks")
         self.free_block_queue = FreeKVCacheBlockQueue(self.block_pool)
 
         # {block_hash: {block ID: block}}. A cached block is
@@ -59,12 +68,14 @@ class KVCacheManager:
         # if there is already an identical block in the cache. This is because
         # we want to make sure the allocated block IDs won't change so that
         # block tables are append-only.
+        logger.debug("Initializing cached block hash to block mapping")
         self.cached_block_hash_to_block: Dict[BlockHashType, Dict[
             int, KVCacheBlock]] = defaultdict(dict)
 
         # Mapping from request ID to blocks to track the blocks allocated
         # for each request, so that we can free the blocks when the request
         # is finished.
+        logger.debug("Initializing request to blocks mapping")
         self.req_to_blocks: Dict[str, List[KVCacheBlock]] = {}
 
     def get_computed_blocks(self, request: Request) -> List[KVCacheBlock]:

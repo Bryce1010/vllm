@@ -27,6 +27,7 @@ class Scheduler:
         cache_config: CacheConfig,
         lora_config: Optional[LoRAConfig],
     ) -> None:
+        logger.debug(f"Initializing Scheduler with scheduler_config: {scheduler_config}, cache_config: {cache_config}, lora_config: {lora_config}")
         self.scheduler_config = scheduler_config
         self.cache_config = cache_config
         self.lora_config = lora_config
@@ -42,6 +43,7 @@ class Scheduler:
         num_gpu_blocks = cache_config.num_gpu_blocks
         assert isinstance(num_gpu_blocks, int) and num_gpu_blocks > 0
         # Create the KV cache manager.
+        logger.debug(f"Creating KVCacheManager with block_size: {self.cache_config.block_size}, num_gpu_blocks: {num_gpu_blocks}, max_model_len: {self.max_model_len}, sliding_window: {self.cache_config.sliding_window}, enable_caching: {self.cache_config.enable_prefix_caching}")
         self.kv_cache_manager = KVCacheManager(
             block_size=self.cache_config.block_size,
             num_gpu_blocks=num_gpu_blocks,
@@ -51,8 +53,10 @@ class Scheduler:
         self.block_size = self.cache_config.block_size
 
         # req_id -> Request
+        logger.debug(f"Initializing requests dict")
         self.requests: Dict[str, Request] = {}
         # Priority queues for requests.
+        logger.debug(f"Initializing waiting and running queues")
         self.waiting: Deque[Request] = deque()
         self.running: List[Request] = []
 

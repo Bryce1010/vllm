@@ -391,6 +391,7 @@ class LLM:
             considered legacy and may be deprecated in the future. You should
             instead pass them via the ``inputs`` parameter.
         """
+        logger.debug(f"[llm] Generating prompts: {prompts}, sampling_params: {sampling_params}, prompt_token_ids:{prompt_token_ids}, prompt_embeds:{prompt_embeds}")
         task = self.llm_engine.model_config.task
         if task != "generate":
             messages = [
@@ -972,9 +973,11 @@ class LLM:
                                                   PoolingRequestOutput)
 
     def start_profile(self) -> None:
+        logger.debug(f"[LLM] Starting profile")
         self.llm_engine.start_profile()
 
     def stop_profile(self) -> None:
+        logger.debug(f"[LLM] Stopping profile")
         self.llm_engine.stop_profile()
 
     # LEGACY
@@ -1032,6 +1035,7 @@ class LLM:
         guided_options: Optional[GuidedDecodingRequest] = None,
         priority: Optional[List[int]] = None,
     ) -> None:
+        logger.debug(f"[llm] Adding requests: prompts: {prompts}, params: {params}, lora_request: {lora_request}, prompt_adapter_request: {prompt_adapter_request}, guided_options: {guided_options}, priority: {priority}")
         if guided_options is not None:
             warnings.warn(
                 "guided_options_request is deprecated, use "
@@ -1045,6 +1049,7 @@ class LLM:
             prompts = [prompts]
 
         num_requests = len(prompts)
+        logger.debug(f"[llm] Number of requests: {num_requests}")
         if isinstance(params, list) and len(params) != num_requests:
             raise ValueError("The lengths of prompts and params "
                              "must be the same.")
@@ -1085,9 +1090,9 @@ class LLM:
         priority: int = 0,
     ) -> None:
         # 每个prompt赋1个request_id
-        logger.debug(f"Adding request: {prompt}")
+        logger.debug(f"[llm] Adding request: {prompt}, params: {params}, lora_request: {lora_request}, prompt_adapter_request: {prompt_adapter_request}, priority: {priority}")
         request_id = str(next(self.request_counter))
-        logger.debug(f"Request ID: {request_id}")
+        logger.debug(f"[llm] Request ID: {request_id}")
         self.llm_engine.add_request(
             request_id,
             prompt,

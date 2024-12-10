@@ -59,6 +59,8 @@ class EngineCore:
         self.mm_input_mapper = MMInputMapper(vllm_config.model_config)
 
         # Setup scheduler.
+        logger.debug("Initializing Scheduler with scheduler_config: %s",
+                     vllm_config.scheduler_config)
         self.scheduler = Scheduler(vllm_config.scheduler_config,
                                    vllm_config.cache_config,
                                    vllm_config.lora_config)

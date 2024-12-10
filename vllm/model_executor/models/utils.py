@@ -174,6 +174,7 @@ class AutoWeightsLoader:
             module_load_weights = getattr(module, "load_weights", None)
             if callable(module_load_weights):
                 loaded_params = module_load_weights(weights)
+                logger.debug(f"Loaded parameters for module, loaded_params: {loaded_params}")
                 if loaded_params is None:
                     logger.warning(
                         "Unable to collect loaded parameters "

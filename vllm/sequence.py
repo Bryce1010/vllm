@@ -19,6 +19,8 @@ from vllm.multimodal import MultiModalDataDict, MultiModalPlaceholderDict
 from vllm.pooling_params import PoolingParams
 from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sampling_params import RequestOutputKind, SamplingParams
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 VLLM_TOKEN_ID_ARRAY_TYPE = "l"
 
@@ -420,6 +422,11 @@ class Sequence:
         lora_request: Optional[LoRARequest] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> None:
+        logger.debug(f"[sequence] Creating Sequence with seq_id={seq_id}, "
+                     f"block_size={block_size}, "
+                     f"eos_token_id={eos_token_id}, "
+                     f"lora_request={lora_request}, "
+                     f"prompt_adapter_request={prompt_adapter_request}")
         self.seq_id = seq_id
         self.inputs = SingletonInputsAdapter(inputs)
         self.block_size = block_size
@@ -433,6 +440,7 @@ class Sequence:
         self.output_text = ""
 
         self.status = SequenceStatus.WAITING
+        logger.debug(f"[sequence] {self.seq_id}] status: {self.status}")
         self.stop_reason: Union[int, str, None] = None
 
         # These are used to keep track of delta outputs
@@ -660,6 +668,7 @@ class SequenceGroup:
         self.arrival_time = arrival_time
         self.is_single_seq = len(seqs) == 1
         self.seqs_dict = {seq.seq_id: seq for seq in seqs}
+        logger.debug(f"Creating SequenceGroup with request_id={request_id}, seqs={seqs}, arrival_time={arrival_time}, sampling_params={sampling_params}, lora_request={lora_request}, embeddings={embeddings}, pooling_params={pooling_params}, encoder_seq={encoder_seq}, trace_headers={trace_headers}, prompt_adapter_request={prompt_adapter_request}, priority={priority}")
 
         self.sampling_params = sampling_params
         self.metrics = RequestMetrics(arrival_time=arrival_time,

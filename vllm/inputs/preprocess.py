@@ -599,12 +599,13 @@ class InputPreprocessor:
 
         * :class:`DecoderOnlyInputs` instance
         """
-
+        logger.debug(f"Processing decoder-only prompt: {prompt}")
         prompt_comps = self._prompt_to_llm_inputs(
             prompt,
             request_id=request_id,
             lora_request=lora_request,
         )
+        logger.debug(f"Processed decoder-only prompt: {prompt_comps}")
 
         return self._build_decoder_only_llm_inputs(
             prompt_comps,
@@ -638,6 +639,7 @@ class InputPreprocessor:
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
     ) -> ProcessorInputs:
         """Preprocess the input prompt."""
+        logger.debug(f"Preprocessing prompt: {prompt}, request_id: {request_id}")
         if self.model_config.is_encoder_decoder:
             # Encoder-decoder model requires special mapping of
             # input prompts to encoder & decoder

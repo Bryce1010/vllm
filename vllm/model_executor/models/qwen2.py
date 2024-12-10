@@ -339,6 +339,7 @@ class Qwen2Model(nn.Module):
             hidden_states = intermediate_tensors["hidden_states"]
             residual = intermediate_tensors["residual"]
         for i in range(self.start_layer, self.end_layer):
+            logger.debug(f"Running layer {i}/{self.end_layer}")
             layer = self.layers[i]
             logger.debug("Running layer info: %s", layer)
             hidden_states, residual = layer(
@@ -351,18 +352,18 @@ class Qwen2Model(nn.Module):
             logger.debug("Layer output shape: %s, residual shape: %s",
                          hidden_states.shape, residual.shape)
         if not get_pp_group().is_last_rank:
-            logger.debug("Layer output shape: %s, residual shape: %s",
-                         hidden_states.shape, residual.shape)
+            logger.debug(f"not last rank, returning intermediate tensors: hidden_states={hidden_states.shape}, residual={residual.shape}")
             return IntermediateTensors({
                 "hidden_states": hidden_states,
                 "residual": residual
             })
         hidden_states, _ = self.norm(hidden_states, residual)
-        logger.debug("Norm output shape: %s", hidden_states.shape)
+        logger.debug("last output shape: %s", hidden_states.shape)
         return hidden_states
 
     def load_weights(self, weights: Iterable[Tuple[str,
                                                    torch.Tensor]]) -> Set[str]:
+        logger.debug(f"Loading weights for Qwen2Model")
         stacked_params_mapping = [
             # (param_name, shard_name, shard_id)
             ("qkv_proj", "q_proj", "q"),
@@ -404,6 +405,7 @@ class Qwen2Model(nn.Module):
                                         default_weight_loader)
                 weight_loader(param, loaded_weight)
             loaded_params.add(name)
+        logger.debug(f"Loaded weights for Qwen2Model: loaded_params={loaded_params}")
         return loaded_params
 
 

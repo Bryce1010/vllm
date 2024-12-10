@@ -96,6 +96,7 @@ ipython_config.py
 
 # generated files
 **/generated/**
+weights/
 
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is

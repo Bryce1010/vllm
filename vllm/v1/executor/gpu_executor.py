@@ -68,6 +68,7 @@ class GPUExecutor:
         self,
         scheduler_output,
     ) -> ModelRunnerOutput:
+        logger.debug(f"Executing model with scheduler_output: {scheduler_output}")
         output = self.worker.execute_model(scheduler_output)
         return output
 

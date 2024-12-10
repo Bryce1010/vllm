@@ -361,6 +361,7 @@ class LLMEngine:
         # Create the scheduler.
         # NOTE: the cache_config here have been updated with the numbers of
         # GPU and CPU blocks, which are profiled in the distributed executor.
+        logger.info("Creating scheduler")
         self.scheduler = [
             Scheduler(
                 self.scheduler_config, self.cache_config, self.lora_config,
@@ -369,6 +370,7 @@ class LLMEngine:
                 if self.model_config.use_async_output_proc else None)
             for v_id in range(self.parallel_config.pipeline_parallel_size)
         ]
+        logger.info("Created scheduler done")
 
         # Metric Logging.
         if self.log_stats:
@@ -425,10 +427,11 @@ class LLMEngine:
         The workers will determine the number of blocks in both the GPU cache
         and the swap CPU cache.
         """
+        logger.debug(f"Initializing KV caches")
         start = time.time()
         num_gpu_blocks, num_cpu_blocks = (
             self.model_executor.determine_num_available_blocks())
-
+        logger.debug(f"num_gpu_blocks: {num_gpu_blocks}, num_cpu_blocks: {num_cpu_blocks}")
         if self.cache_config.num_gpu_blocks_override is not None:
             num_gpu_blocks_override = self.cache_config.num_gpu_blocks_override
             logger.info(
@@ -441,8 +444,9 @@ class LLMEngine:
         self.cache_config.num_cpu_blocks = num_cpu_blocks
 
         self.model_executor.initialize_cache(num_gpu_blocks, num_cpu_blocks)
+        logger.debug(f"Initialized KV caches done")
         elapsed = time.time() - start
-        logger.info(("init engine (profile, create kv cache, "
+        logger.info(("Initialized kv cache (profile, create kv cache, "
                      "warmup model) took %.2f seconds"), elapsed)
 
     @classmethod
@@ -525,7 +529,27 @@ class LLMEngine:
     ) -> "LLMEngine":
         """Creates an LLM engine from the engine arguments."""
         # Create the engine configs.
+        # 初始化配置
+        # model_config,
+        # cache_config,
+        # parallel_config,
+        # scheduler_config,
+        # device_config,
+        # lora_config,
+        # speculative_config,
+        # load_config,
+        # decoding_config,
+        # observability_config,
+        # prompt_adapter_config,
+        # compilation_config,
+        # kv_transfer_config,
         engine_config = engine_args.create_engine_config(usage_context)
+        # 根据配置选择执行器
+        # neuron_executor
+        # cpu_executor
+        # hpu_executor
+        # openvino_executor
+        # xpu_executor
         executor_class = cls._get_executor_cls(engine_config)
         # Create the LLM engine.
         engine = cls(
@@ -604,6 +628,7 @@ class LLMEngine:
         return the created sequence group.
         """
         if isinstance(params, SamplingParams) and params.n > 1:
+            logger.debug(f"Adding {params.n} parallel requests for {request_id}")
             ParallelSampleSequenceGroup.add_request(
                 request_id,
                 self,
@@ -616,12 +641,14 @@ class LLMEngine:
                 priority=priority,
             )
             return None
-
+        logger.debug(f"Adding request for {request_id}")
         self._validate_model_inputs(processed_inputs, lora_request)
         # Create the sequences.
         block_size = self.cache_config.block_size
+        logger.debug(f"block_size: {block_size}")
         seq_id = next(self.seq_counter)
         eos_token_id = self.input_preprocessor.get_eos_token_id(lora_request)
+        logger.debug(f"eos_token_id: {eos_token_id}")
 
         if is_encoder_decoder_inputs(processed_inputs):
             decoder_inputs = processed_inputs["decoder"]
@@ -630,8 +657,10 @@ class LLMEngine:
             decoder_inputs = processed_inputs
             encoder_inputs = None
 
+        logger.debug(f"create sequence for {request_id}")
         seq = Sequence(seq_id, decoder_inputs, block_size, eos_token_id,
                        lora_request, prompt_adapter_request)
+        logger.debug(f"create encoder sequence for {request_id}, seq: {seq}")
 
         encoder_seq = (None if encoder_inputs is None else Sequence(
             seq_id, encoder_inputs, block_size, eos_token_id, lora_request,
@@ -639,6 +668,7 @@ class LLMEngine:
 
         # Create a SequenceGroup based on SamplingParams or PoolingParams
         if isinstance(params, SamplingParams):
+            logger.debug(f"create sequence group with sampling for {request_id}")
             seq_group = self._create_sequence_group_with_sampling(
                 request_id,
                 seq,
@@ -650,6 +680,7 @@ class LLMEngine:
                 encoder_seq=encoder_seq,
                 priority=priority)
         elif isinstance(params, PoolingParams):
+            logger.debug(f"create sequence group with pooling for {request_id}")
             seq_group = self._create_sequence_group_with_pooling(
                 request_id,
                 seq,
@@ -668,7 +699,9 @@ class LLMEngine:
             scheduler.get_num_unfinished_seq_groups()
             for scheduler in self.scheduler
         ]
+        logger.debug(f"scheduler num unfinished seqs costs: {costs}")
         min_cost_scheduler = self.scheduler[costs.index(min(costs))]
+        logger.debug(f"add seq group to waiting scheduler for {request_id}")
         min_cost_scheduler.add_seq_group(seq_group)
 
         return seq_group
@@ -766,6 +799,7 @@ class LLMEngine:
             >>> # continue the request processing
             >>> ...
         """
+        logger.debug(f"add request: request_id={request_id}")
         if inputs is not None:
             prompt = inputs
         assert prompt is not None and params is not None
@@ -803,7 +837,9 @@ class LLMEngine:
             lora_request=lora_request,
             prompt_adapter_request=prompt_adapter_request,
         )
+        logger.debug(f"preprocessed inputs: shape={preprocessed_inputs.shape}")
         processed_inputs = self.input_processor(preprocessed_inputs)
+        logger.debug(f"processed inputs: shape={processed_inputs.shape}")
 
         self._add_processed_request(
             request_id=request_id,
@@ -850,6 +886,7 @@ class LLMEngine:
         priority: int = 0,
     ) -> SequenceGroup:
         """Creates a SequenceGroup with SamplingParams."""
+        logger.debug(f"create sequence group with sampling: request_id={request_id}")
         max_logprobs = self.get_model_config().max_logprobs
         if (sampling_params.logprobs
                 and sampling_params.logprobs > max_logprobs) or (
@@ -869,6 +906,7 @@ class LLMEngine:
             self.generation_config_fields, seq.eos_token_id)
 
         # Create the sequence group.
+        logger.debug(f"created sequence group with sampling: {seq}")
         seq_group = SequenceGroup(
             request_id=request_id,
             seqs=[seq],
@@ -879,7 +917,7 @@ class LLMEngine:
             prompt_adapter_request=prompt_adapter_request,
             encoder_seq=encoder_seq,
             priority=priority)
-
+        logger.debug(f"created sequence group with sampling: {seq_group}")
         return seq_group
 
     def _create_sequence_group_with_pooling(
@@ -1958,6 +1996,7 @@ class LLMEngine:
 
     def _validate_model_inputs(self, inputs: ProcessorInputs,
                                lora_request: Optional[LoRARequest]):
+        logger.debug(f"Validating model inputs: {inputs.shape}")
         if is_encoder_decoder_inputs(inputs):
             # For encoder-decoder multimodal models, the max_prompt_len
             # restricts the decoder prompt length
@@ -1967,6 +2006,7 @@ class LLMEngine:
             prompt_inputs = inputs
 
         prompt_ids = SingletonInputsAdapter(prompt_inputs).prompt_token_ids
+        logger.debug(f"Prompt: {prompt_ids}")
 
         if prompt_ids is None or len(prompt_ids) == 0:
             raise ValueError("Prompt cannot be empty")

@@ -8,6 +8,8 @@ from torch import nn
 from vllm.config import ModelConfig
 from vllm.model_executor.models import ModelRegistry
 from vllm.model_executor.models.adapters import as_embedding_model
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 
 @contextlib.contextmanager
@@ -22,6 +24,7 @@ def set_default_torch_dtype(dtype: torch.dtype):
 def get_model_architecture(
         model_config: ModelConfig) -> Tuple[Type[nn.Module], str]:
     architectures = getattr(model_config.hf_config, "architectures", [])
+    logger.debug(f"Architectures: {architectures}")
 
     # Special handling for quantized Mixtral.
     # FIXME(woosuk): This is a temporary hack.
@@ -35,9 +38,10 @@ def get_model_architecture(
         architectures = ["QuantMixtralForCausalLM"]
 
     model_cls, arch = ModelRegistry.resolve_model_cls(architectures)
+    logger.debug(f"Model class: {model_cls}, arch: {arch}")
     if model_config.task == "embedding":
         model_cls = as_embedding_model(model_cls)
-
+    logger.debug(f"Final model class: {model_cls}")
     return model_cls, arch
 
 

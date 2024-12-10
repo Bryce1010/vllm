@@ -12,7 +12,7 @@ logger = init_logger("vllm")
 
 def create_test_prompts() -> List[Tuple[TextPrompt, SamplingParams]]:
     """Create a list of test prompts with their sampling parameters."""
-    hidden_states = torch.load("./examples/hidden_states.pt")
+    hidden_states = torch.load("./logs/hidden_states.pt")
     logger.info(f"Hidden states shape: {hidden_states.shape}")
     logger.info(f"Hidden states: {hidden_states}")
 
@@ -30,7 +30,7 @@ def process_requests(engine: LLMEngine,
         if test_prompts:
             prompt, sampling_params = test_prompts.pop(0)
             engine.add_request(str(request_id), prompt, sampling_params)
-            request_id = 0
+            request_id += 1
 
         request_outputs: List[RequestOutput] = engine.step()
 
@@ -47,11 +47,17 @@ def process_requests(engine: LLMEngine,
 def initialize_engine(args: argparse.Namespace) -> LLMEngine:
     """Initialize the LLMEngine from the command line arguments."""
     engine_args = EngineArgs.from_cli_args(args)
+    
+    engine_args.model = "./weights/Minmo-codec-new"
+    logger.info(f"Initializing engine with local model: {engine_args.model}")
+
     return LLMEngine.from_engine_args(engine_args)
 
 def main(args: argparse.Namespace):
     """Main function that sets up and runs the prompt processing."""
+    logger.debug(f"create engine with args: {args}")
     engine = initialize_engine(args)
+    logger.debug(f"created engine: {engine}")
     test_prompts = create_test_prompts()
     process_requests(engine, test_prompts)
 

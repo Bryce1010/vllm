@@ -21,7 +21,7 @@ def load_general_plugins():
     # all processes created by vllm will load plugins,
     # and here we can inject some common environment variables
     # for all processes.
-
+    logger.debug(f"Loading general plugins.")
     # see https://github.com/vllm-project/vllm/issues/10480
     os.environ['TORCHINDUCTOR_COMPILE_THREADS'] = '1'
     # see https://github.com/vllm-project/vllm/issues/10619

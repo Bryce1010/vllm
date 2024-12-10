@@ -10,7 +10,8 @@ if TYPE_CHECKING:
     from vllm.multimodal import (MultiModalDataDict, MultiModalKwargs,
                                  MultiModalPlaceholderDict)
     from vllm.multimodal.inputs import MultiModalInputsV2
-
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 class TextPrompt(TypedDict):
     """Schema for a text prompt."""
@@ -258,9 +259,11 @@ class SingletonInputsAdapter:
 
     @cached_property
     def prompt_token_ids(self) -> List[int]:
+        logger.debug(f"SingletonInputsAdapter.prompt_token_ids: {self.inputs.shape}")
         inputs = self.inputs
 
         if inputs["type"] == "token" or inputs["type"] == "multimodal":
+            logger.debug(f"SingletonInputsAdapter.prompt_token_ids: token_len={len(inputs.get('prompt_token_ids', []))}, token_ids={inputs.get('prompt_token_ids', [])}")
             return inputs.get("prompt_token_ids", [])
 
         assert_never(inputs)

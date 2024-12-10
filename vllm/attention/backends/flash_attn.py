@@ -25,7 +25,8 @@ if TYPE_CHECKING:
 
 from vllm.vllm_flash_attn import (flash_attn_varlen_func,
                                   flash_attn_with_kvcache)
-
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 class FlashAttentionBackend(AttentionBackend):
 
@@ -62,6 +63,7 @@ class FlashAttentionBackend(AttentionBackend):
     ) -> Tuple[int, ...]:
         if block_size % 16 != 0:
             raise ValueError("Block size must be a multiple of 16.")
+        logger.debug(f"kv_cache_shape: {2, num_blocks, block_size, num_kv_heads, head_size}")
         return (2, num_blocks, block_size, num_kv_heads, head_size)
 
     @staticmethod
@@ -70,6 +72,7 @@ class FlashAttentionBackend(AttentionBackend):
         dst_kv_cache: torch.Tensor,
         src_to_dst: torch.Tensor,
     ) -> None:
+        logger.debug(f"swap_blocks: {src_kv_cache.shape}, {dst_kv_cache.shape}, {src_to_dst.shape}")
         src_key_cache = src_kv_cache[0]
         dst_key_cache = dst_kv_cache[0]
         ops.swap_blocks(src_key_cache, dst_key_cache, src_to_dst)
@@ -190,6 +193,8 @@ class FlashAttentionMetadata(AttentionMetadata):
 
     @property
     def prefill_metadata(self) -> Optional["FlashAttentionMetadata"]:
+        logger.debug(f"prefill_metadata: num_prefills={self.num_prefills}")
+
         if self.num_prefills == 0:
             return None
 
@@ -216,6 +221,7 @@ class FlashAttentionMetadata(AttentionMetadata):
                                self.context_lens_tensor[:self.num_prefills])
         block_tables = (None if self.block_tables is None else
                         self.block_tables[:self.num_prefills])
+        logger.debug(f"prefill_metadata: {self.num_prefills}, {self.num_prefill_tokens}, {self.num_decode_tokens}, {self.max_query_len}, {self.max_prefill_seq_len}, {self.max_decode_query_len}, {self.max_decode_seq_len}, {query_start_loc}, {seq_start_loc}, {context_lens_tensor}, {block_tables}")
 
         self._cached_prefill_metadata = FlashAttentionMetadata(
             num_prefills=self.num_prefills,
@@ -292,6 +298,7 @@ class FlashAttentionMetadata(AttentionMetadata):
             max_encoder_seq_len=self.max_encoder_seq_len,
             cross_slot_mapping=self.cross_slot_mapping,
             cross_block_tables=self.cross_block_tables)
+        logger.debug(f"cached decode_metadata: {self.num_prefills}, {self.num_prefill_tokens}, {self.num_decode_tokens}, {self.max_query_len}, {self.max_prefill_seq_len}, {self.max_decode_query_len}, {self.max_decode_seq_len}, {self.query_start_loc}, {self.seq_start_loc}, {self.context_lens_tensor}, {self.block_tables}")
         return self._cached_decode_metadata
 
     def advance_step(self,
@@ -307,6 +314,7 @@ class FlashAttentionMetadata(AttentionMetadata):
         # When using cudagraph, the num_seqs is padded to the next captured
         # batch sized, but num_queries tracks the actual number of requests in
         # the batch. For --enforce-eager mode, num_seqs == num_queries
+        logger.debug(f"advance_step: {num_seqs}, {num_queries}, {block_size}, {model_input.input_tokens}, {sampled_token_ids}, {model_input.input_positions}")
         if num_seqs != num_queries:
             assert num_seqs > num_queries
             assert self.use_cuda_graph
@@ -316,6 +324,7 @@ class FlashAttentionMetadata(AttentionMetadata):
             # decodes are scheduled together. In the first step, all the
             # prefills turn into decodes. This update reflects that
             # conversion.
+            logger.debug(f"Turning prefills into decodes.")
             assert self.num_decode_tokens + self.num_prefills == num_seqs
             self.num_decode_tokens += self.num_prefills
             self.num_prefills = 0
@@ -357,6 +366,7 @@ class FlashAttentionMetadata(AttentionMetadata):
             self.seq_lens[i] += 1
         self.max_decode_seq_len = max(self.seq_lens)
 
+        logger.debug(f"advance step flash attn")
         ops.advance_step_flashattn(num_seqs=num_seqs,
                                    num_queries=num_queries,
                                    block_size=block_size,
@@ -398,6 +408,7 @@ class FlashAttentionMetadataBuilder(
         2. block table.
         3. slot mapping.
         """
+        logger.debug(f"_add_seq_group: {inter_data.seq_ids}, {inter_data.input_tokens}, {inter_data.orig_seq_lens}, {inter_data.seq_lens}, {inter_data.query_lens}, {inter_data.context_lens}, {inter_data.curr_sliding_window_blocks}")
         is_prompt = inter_data.is_prompt
         block_tables = inter_data.block_tables
 
@@ -654,6 +665,7 @@ class FlashAttentionImpl(AttentionImpl):
         NOTE: It in-place updates the output tensor.
         """
         # NOTE(woosuk): FlashAttention does not support FP8 KV cache.
+        logger.debug(f"forward: {query.shape}, {key.shape}, {value.shape}, {kv_cache.shape}, {k_scale}, {v_scale}, {output.shape}, {attn_type}")
         assert k_scale == 1.0 and v_scale == 1.0, (
             "key/v_scale is not supported in FlashAttention.")
 
@@ -678,6 +690,7 @@ class FlashAttentionImpl(AttentionImpl):
         if kv_cache.numel() > 0:
             key_cache = kv_cache[0]
             value_cache = kv_cache[1]
+            logger.debug(f"forward: {key_cache.shape}, {value_cache.shape}")
             # We skip updating the KV cache under two conditions:
             #  a. When the Attention Type is ENCODER. In this phase, we compute
             #     only the encoder attention without updating the cache.
@@ -698,6 +711,7 @@ class FlashAttentionImpl(AttentionImpl):
                 # If kv_cache is not provided, the new key and value tensors are
                 # not cached. This happens during the initial memory
                 # profiling run.
+                logger.debug(f"reshape and cache flash in cuda")
                 torch.ops._C_cache_ops.reshape_and_cache_flash(
                     key,
                     value,
@@ -712,27 +726,33 @@ class FlashAttentionImpl(AttentionImpl):
         (num_prefill_query_tokens, num_prefill_kv_tokens,
         num_decode_query_tokens) = \
             get_num_prefill_decode_query_kv_tokens(attn_metadata, attn_type)
+        logger.debug(f"forward: {num_prefill_query_tokens}, {num_prefill_kv_tokens}, {num_decode_query_tokens}")
         decode_query = query[num_prefill_query_tokens:]
         decode_output = output[num_prefill_query_tokens:]
         # QKV for prefill.
         query = query[:num_prefill_query_tokens]
         prefill_output = output[:num_prefill_query_tokens]
+        logger.debug(f"decode_query: {decode_query.shape}, {decode_output.shape}, {query.shape}, {prefill_output.shape}")
         assert query.shape[0] == num_prefill_query_tokens
         assert decode_query.shape[0] == num_decode_query_tokens
 
         if prefill_meta := attn_metadata.prefill_metadata:
+            logger.debug(f"prefill run: prefill_meta={prefill_meta}")
             # Prompt run.
             if (kv_cache.numel() == 0 or prefill_meta.block_tables is None
                     or prefill_meta.block_tables.numel() == 0):
                 # normal attention
                 # When block_tables are not filled, it means q and k are the
                 # prompt, and they have the same length.
+                logger.debug(f"normal attention and prompt run")
+                logger.debug(f"call get query key seq metadata")
                 q_seq_start_loc, q_seq_len, k_seq_start_loc, k_seq_len = \
                     _get_query_key_seq_metadata(prefill_meta, True, attn_type)
+                logger.debug(f"flash attn varlen func: {query.shape}, {key.shape}, {value.shape}, {q_seq_start_loc.shape}, {q_seq_len}, {k_seq_start_loc.shape}, {k_seq_len}, {softmax_scale}, {window_size}, {alibi_slopes}, {logits_soft_cap}, {prefill_output.shape}")
 
                 key = key[:num_prefill_kv_tokens]
                 value = value[:num_prefill_kv_tokens]
-
+                logger.debug(f"call flash attn varlen func")
                 flash_attn_varlen_func(
                     q=query,
                     k=key,
@@ -750,10 +770,12 @@ class FlashAttentionImpl(AttentionImpl):
                 )
             else:
                 # prefix-enabled attention
+                logger.debug(f"prefix enabled attention")
                 assert attn_type == AttentionType.DECODER, (
                     "Only decoder-only models support prefix caching")
                 assert prefill_meta.seq_lens is not None
                 max_seq_len = max(prefill_meta.seq_lens)
+                logger.debug(f"call flash attn varlen func: {query.shape}, {key_cache.shape}, {value_cache.shape}, {prefill_meta.query_start_loc.shape}, {prefill_meta.max_query_len}, {prefill_meta.seq_start_loc.shape}, {max_seq_len}, {softmax_scale}, {window_size}, {alibi_slopes}, {logits_soft_cap}, {prefill_output.shape}")
                 flash_attn_varlen_func(  # noqa
                     q=query,
                     k=key_cache,
@@ -775,6 +797,7 @@ class FlashAttentionImpl(AttentionImpl):
             # Decoding run.
             # Use flash_attn_varlen_func kernel for speculative decoding
             # because different queries might have different lengths.
+            logger.debug(f"decode run: decode_meta={decode_meta}")
 
             assert decode_meta.max_decode_query_len is not None
             # use only for actual varlen decoding
@@ -782,6 +805,7 @@ class FlashAttentionImpl(AttentionImpl):
                 assert attn_type == AttentionType.DECODER, (
                     "Only decoder-only models support max_decode_query_len > 1"
                 )
+                logger.debug(f"call flash attn varlen func for actual varlen decoding: {decode_query.shape}, {key_cache.shape}, {value_cache.shape}, {decode_meta.query_start_loc.shape}, {decode_meta.max_decode_query_len}, {decode_meta.seq_start_loc.shape}, {decode_meta.max_decode_seq_len}, {softmax_scale}, {window_size}, {alibi_slopes}, {logits_soft_cap}, {decode_output.shape}")
                 flash_attn_varlen_func(
                     q=decode_query,
                     k=key_cache,
@@ -805,6 +829,7 @@ class FlashAttentionImpl(AttentionImpl):
                     _,
                     block_tables_arg,
                 ) = get_seq_len_block_table_args(decode_meta, False, attn_type)
+                logger.debug(f"call flash attn with kv cache for normal decoding: {decode_query.shape}, {key_cache.shape}, {value_cache.shape}, {seq_lens_arg.shape}, {block_tables_arg.shape}, {softmax_scale}, {window_size}, {alibi_slopes}, {logits_soft_cap}, {decode_output.shape}")
                 flash_attn_with_kvcache(
                     q=decode_query.unsqueeze(1),
                     k_cache=key_cache,
@@ -818,6 +843,7 @@ class FlashAttentionImpl(AttentionImpl):
                     softcap=logits_soft_cap,
                     out=decode_output.unsqueeze(1),
                 )
+        logger.debug(f"finish forward, output: {output.shape}")
         return output
 
 

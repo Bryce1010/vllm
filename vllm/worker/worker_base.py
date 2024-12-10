@@ -314,19 +314,23 @@ class LocalOrDistributedWorkerBase(WorkerBase):
     ) -> Optional[List[SamplerOutput]]:
         """Executes at least one model step on the given sequences, unless no
         sequences are provided."""
+        logger.debug(f"Executing model by driver worker with execute_model_req: {execute_model_req}")
         start_time = time.perf_counter()
 
         inputs = self.prepare_input(execute_model_req)
+        logger.debug(f"Prepared input: {inputs}")
         if inputs is None:
             return None
 
         model_input, worker_input, kwargs = inputs
         num_steps = worker_input.num_steps
-
+        
+        logger.debug(f"Executed worker with worker_input: {worker_input}")
         self.execute_worker(worker_input)
 
         # If there is no input, we don't need to execute the model.
         if worker_input.num_seq_groups == 0:
+            logger.debug("No input, returning empty list")
             return []
 
         intermediate_tensors = None
@@ -335,11 +339,14 @@ class LocalOrDistributedWorkerBase(WorkerBase):
             intermediate_tensors = IntermediateTensors(
                 get_pp_group().recv_tensor_dict(
                     all_gather_group=get_tp_group()))
+            logger.debug(f"Received intermediate_tensors: {intermediate_tensors}")
             if (self.observability_config is not None
                     and self.observability_config.collect_model_execute_time):
                 orig_model_execute_time = intermediate_tensors.tensors.get(
                     "model_execute_time", torch.tensor(0)).item()
+                logger.debug(f"Received orig_model_execute_time: {orig_model_execute_time}")
 
+        logger.debug(f"Executing model with model_input: {model_input}")
         output = self.model_runner.execute_model(
             model_input=model_input,
             kv_caches=self.kv_cache[worker_input.virtual_engine]
@@ -348,6 +355,7 @@ class LocalOrDistributedWorkerBase(WorkerBase):
             num_steps=num_steps,
             **kwargs,
         )
+        logger.debug(f"Executed model with output: {output}")
 
         model_execute_time = time.perf_counter() - start_time
         if not get_pp_group().is_last_rank:
@@ -440,6 +448,7 @@ class WorkerWrapperBase:
         Here we inject some common logic before initializing the worker.
         Arguments are passed to the worker class constructor.
         """
+        logger.debug(f"Initializing worker with args: {args}, kwargs: {kwargs}")
         enable_trace_function_call_for_thread(self.vllm_config)
 
         # see https://github.com/NVIDIA/nccl/issues/1234

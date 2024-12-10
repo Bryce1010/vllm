@@ -6,7 +6,8 @@ from vllm.core.block.naive_block import NaiveBlock, NaiveBlockAllocator
 from vllm.core.block.prefix_caching_block import PrefixCachingBlockAllocator
 from vllm.platforms import current_platform
 from vllm.utils import Device
-
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 class CpuGpuBlockAllocator(DeviceAwareBlockAllocator):
     """A block allocator that can allocate blocks on both CPU and GPU memory.
@@ -53,15 +54,19 @@ class CpuGpuBlockAllocator(DeviceAwareBlockAllocator):
             - The block IDs are assigned contiguously, with GPU block IDs coming
                 before CPU block IDs.
         """
+        logger.debug(f" Creating CpuGpuBlockAllocator: allocator_type={allocator_type}, num_gpu_blocks={num_gpu_blocks}, num_cpu_blocks={num_cpu_blocks}, block_size={block_size}")
         # For HPU, block id 0 is used only for padding
         reserved_blocks = 1 if current_platform.is_hpu() else 0
         block_ids = list(
             range(reserved_blocks, num_gpu_blocks + num_cpu_blocks))
+        logger.debug(f"block_ids={block_ids}")
         num_gpu_blocks -= reserved_blocks
         gpu_block_ids = block_ids[:num_gpu_blocks]
         cpu_block_ids = block_ids[num_gpu_blocks:]
+        logger.debug(f"num_gpu_blocks={num_gpu_blocks}, gpu_block_ids={gpu_block_ids}, num_cpu_blocks={num_cpu_blocks}, cpu_block_ids={cpu_block_ids}")
 
         if allocator_type == "naive":
+            logger.debug(f"Using NaiveBlockAllocator")
             gpu_allocator: BlockAllocator = NaiveBlockAllocator(
                 create_block=NaiveBlock,  # type: ignore
                 num_blocks=num_gpu_blocks,
@@ -76,6 +81,7 @@ class CpuGpuBlockAllocator(DeviceAwareBlockAllocator):
                 block_ids=cpu_block_ids,
             )
         elif allocator_type == "prefix_caching":
+            logger.debug(f"Using PrefixCachingBlockAllocator")
             gpu_allocator = PrefixCachingBlockAllocator(
                 num_blocks=num_gpu_blocks,
                 block_size=block_size,
@@ -89,7 +95,8 @@ class CpuGpuBlockAllocator(DeviceAwareBlockAllocator):
             )
         else:
             raise ValueError(f"Unknown allocator type {allocator_type=}")
-
+        
+        logger.debug(f"Returning CpuGpuBlockAllocator")
         return CpuGpuBlockAllocator(
             cpu_block_allocator=cpu_allocator,
             gpu_block_allocator=gpu_allocator,
@@ -97,6 +104,7 @@ class CpuGpuBlockAllocator(DeviceAwareBlockAllocator):
 
     def __init__(self, cpu_block_allocator: BlockAllocator,
                  gpu_block_allocator: BlockAllocator):
+        logger.debug(f"Initializing CpuGpuBlockAllocator")
         assert not (
             cpu_block_allocator.all_block_ids
             & gpu_block_allocator.all_block_ids
@@ -114,6 +122,7 @@ class CpuGpuBlockAllocator(DeviceAwareBlockAllocator):
         for _, allocator in self._allocators.items():
             for block_id in allocator.all_block_ids:
                 self._block_ids_to_allocator[block_id] = allocator
+                logger.debug(f"allocator={allocator}, block_id={block_id}")
 
     def allocate_or_get_null_block(self) -> Block:
         if self._null_block is None:
@@ -217,6 +226,7 @@ class CpuGpuBlockAllocator(DeviceAwareBlockAllocator):
         Returns:
             int: The number of free blocks available on the specified device.
         """
+        logger.debug(f"get_num_free_blocks: device={device}, free_blocks={self._allocators[device].get_num_free_blocks()}")
         return self._allocators[device].get_num_free_blocks()
 
     def get_num_total_blocks(self, device: Device) -> int:

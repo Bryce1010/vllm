@@ -119,18 +119,21 @@ class Worker:
             You may limit the usage of GPU memory
             by adjusting the `gpu_memory_utilization` parameter.
         """
+        logger.debug(f"Profiling the memory usage of the model.")
         # Profile the memory usage of the model and get the maximum number of
         # cache blocks that can be allocated with the remaining free memory.
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats()
 
         _, total_gpu_memory = torch.cuda.mem_get_info()
+        logger.debug(f"Total GPU memory: {total_gpu_memory}")
         # Execute a forward pass with dummy inputs to profile the memory usage
         # of the model.
         self.model_runner.profile_run()
         torch.cuda.synchronize()
 
         free_gpu_memory, _ = torch.cuda.mem_get_info()
+        logger.debug(f"Free GPU memory: {free_gpu_memory}")
         # NOTE(woosuk): Here we assume that the other processes using the same
         # GPU did not change their memory usage during the profiling.
         assert self.init_gpu_memory > free_gpu_memory, (
@@ -141,6 +144,7 @@ class Worker:
 
         # Get the peak memory allocation recorded by torch
         peak_memory = torch.cuda.memory_stats()["allocated_bytes.all.peak"]
+        logger.debug(f"Peak memory: {peak_memory}")
 
         # Check for any memory left around that may have been allocated on the
         # gpu outside of `torch`. NCCL operations, for example, can use a few
@@ -156,14 +160,17 @@ class Worker:
         available_kv_cache_memory = (
             total_gpu_memory * self.cache_config.gpu_memory_utilization -
             peak_memory)
+        logger.debug(f"Available KV cache memory: {available_kv_cache_memory}")
 
         # Calculate the number of blocks that can be allocated with the
         # profiled peak memory.
         cache_block_size = _get_cache_block_size(self.cache_config,
                                                  self.model_config,
                                                  self.parallel_config)
+        logger.debug(f"Cache block size: {cache_block_size}")
         num_gpu_blocks = int(available_kv_cache_memory // cache_block_size)
         num_gpu_blocks = max(num_gpu_blocks, 0)
+        logger.debug(f"Number of GPU blocks: {num_gpu_blocks}")
         return num_gpu_blocks, 0
 
     def initialize_cache(self, num_gpu_blocks: int) -> None:
@@ -198,6 +205,7 @@ class Worker:
         self,
         scheduler_output: "SchedulerOutput",
     ) -> ModelRunnerOutput:
+        logger.debug(f"Executing model with scheduler_output: {scheduler_output}")
         output = self.model_runner.execute_model(scheduler_output)
         # TODO(woosuk): Send the output to the engine process.
         return output
@@ -252,17 +260,24 @@ def _get_cache_block_size(
     model_config: ModelConfig,
     parallel_config: ParallelConfig,
 ) -> int:
+    logger.debug(f"Getting cache block size with cache config: {cache_config}, "
+                 f"model config: {model_config}, parallel config: {parallel_config}")
     head_size = model_config.get_head_size()
     num_heads = model_config.get_num_kv_heads(parallel_config)
     num_attention_layers = model_config.get_num_attention_layers(
         parallel_config)
+    logger.debug(f"head_size: {head_size}, num_heads: {num_heads}, "
+                 f"num_attention_layers: {num_attention_layers}")
 
     key_cache_block = cache_config.block_size * num_heads * head_size
     value_cache_block = key_cache_block
     total = num_attention_layers * (key_cache_block + value_cache_block)
+    logger.debug(f"Key cache block: {key_cache_block}, Value cache block: {value_cache_block}, "
+                    f"Total: {total}")
     if cache_config.cache_dtype == "auto":
         dtype = model_config.dtype
     else:
         dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
     dtype_size = get_dtype_size(dtype)
+    logger.debug(f"Dtype: {dtype}, Dtype size: {dtype_size}")
     return dtype_size * total

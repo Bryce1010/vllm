@@ -13,6 +13,8 @@ from vllm.core.block.naive_block import (BlockPool, NaiveBlock,
                                          NaiveBlockAllocator)
 from vllm.core.evictor import EvictionPolicy, Evictor, make_evictor
 from vllm.sequence import Sequence
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 PrefixHash = int
 
@@ -889,6 +891,7 @@ class ComputedBlocksTracker:
         block_size: int,
         enable_caching: bool,
     ):
+        logger.debug(f"enable_caching = {enable_caching}")
         self._allocator = allocator
         self._block_size = block_size
         self._enable_caching = enable_caching
@@ -997,6 +1000,7 @@ class LastAccessBlocksTracker:
     """
 
     def __init__(self, allocator):
+        logger.debug(f"Init LastAccessBlocksTracker")
         self._allocator = allocator
         self._seq_last_access: Dict[int, Optional[float]] = {}
 

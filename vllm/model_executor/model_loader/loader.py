@@ -103,14 +103,18 @@ def _initialize_model(
     prefix: str = "",
 ) -> nn.Module:
     """Initialize a model with the given configurations."""
+    logger.debug(f"Initializing model with vllm_config: {vllm_config}")
     model_config = vllm_config.model_config
     model_class, _ = get_model_architecture(model_config)
+    logger.debug(f"Model class: {model_class}")
 
     signatures = inspect.signature(model_class.__init__)
     all_params = [param.name for param in signatures.parameters.values()]
+    logger.debug(f"Model class parameters: {all_params}")
     if "vllm_config" in all_params and "prefix" in all_params:
         # new-style model class
         with set_current_vllm_config(vllm_config):
+            logger.debug(f"Creating model with prefix: {prefix}")
             return model_class(vllm_config=vllm_config, prefix=prefix)
 
     msg = ("vLLM model class should accept `vllm_config` and `prefix` as "
@@ -532,6 +536,7 @@ class ShardedStateLoader(BaseModelLoader):
     DEFAULT_PATTERN = "model-rank-{rank}-part-{part}.safetensors"
 
     def __init__(self, load_config: LoadConfig):
+        logger.debug(f"Initializing ShardedStateLoader with load_config: {load_config}")
         super().__init__(load_config)
         extra_config = ({} if load_config.model_loader_extra_config is None
                         else load_config.model_loader_extra_config.copy())
@@ -548,6 +553,7 @@ class ShardedStateLoader(BaseModelLoader):
         Filter out all tensors that share the same memory or a subset of the
         memory of another tensor.
         """
+        logger.debug(f"Filtering subtensors from tensors: {tensors.keys()}")
         same_storage_groups: Dict[Any, List[Tuple[str, torch.Tensor]]] = (
             collections.defaultdict(list))
         for key, tensor in tensors.items():
@@ -579,6 +585,7 @@ class ShardedStateLoader(BaseModelLoader):
 
     def _prepare_weights(self, model_name_or_path: str,
                          revision: Optional[str]):
+        logger.debug(f"Preparing weights for model: {model_name_or_path}")
         if os.path.isdir(model_name_or_path):
             return model_name_or_path
         else:
@@ -592,9 +599,11 @@ class ShardedStateLoader(BaseModelLoader):
             )
 
     def download_model(self, model_config: ModelConfig) -> None:
+        logger.debug(f"Downloading model with ShardedStateLoader: {model_config}")
         self._prepare_weights(model_config.model, model_config.revision)
 
     def load_model(self, vllm_config: VllmConfig) -> nn.Module:
+        logger.debug(f"Loading model with ShardedStateLoader with vllm_config: {vllm_config}")
         device_config = vllm_config.device_config
         model_config = vllm_config.model_config
         from safetensors.torch import safe_open
@@ -603,7 +612,7 @@ class ShardedStateLoader(BaseModelLoader):
 
         local_model_path = self._prepare_weights(model_config.model,
                                                  model_config.revision)
-
+        logger.debug(f"Local model path: {local_model_path}")
         with set_default_torch_dtype(model_config.dtype):
             with torch.device(device_config.device):
                 model = _initialize_model(vllm_config=vllm_config)
@@ -623,6 +632,7 @@ class ShardedStateLoader(BaseModelLoader):
                     f"Could not find checkpoint files '{pattern}', only "
                     f"pre-sharded checkpoints are currently supported!")
             state_dict = self._filter_subtensors(model.state_dict())
+            logger.debug(f"Loading state dict with keys: {state_dict.keys()}")
             for path in filepaths:
                 with safe_open(path, framework="pt") as f:
                     for key in f.keys():  # noqa: SIM118
@@ -1236,6 +1246,7 @@ class GGUFModelLoader(BaseModelLoader):
 
 def get_model_loader(load_config: LoadConfig) -> BaseModelLoader:
     """Get a model loader based on the load format."""
+    logger.debug(f"Creating model loader for load format {load_config.load_format}")
 
     if isinstance(load_config.load_format, type):
         return load_config.load_format(load_config)
