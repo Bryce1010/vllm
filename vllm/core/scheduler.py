@@ -1089,6 +1089,7 @@ class Scheduler:
         """
         # Include running requests to the budget.
         logger.debug(f"creating budget")
+        # 初始化预算，设置 token 和 sequence 的最大使用量
         budget = SchedulingBudget(
             token_budget=self.scheduler_config.max_num_batched_tokens,
             max_num_seqs=self.scheduler_config.max_num_seqs,
@@ -1096,6 +1097,7 @@ class Scheduler:
         logger.debug(f"created budget: {budget}")
         # Make sure we include num running seqs before scheduling prefill,
         # so that we don't schedule beyond max_num_seqs for prefill.
+        # 根据现有的运行任务，更新预算使用情况
         for seq_group in self.running:
             logger.debug(f"adding num running seqs: {seq_group.request_id}")
             budget.add_num_seqs(seq_group.request_id,
@@ -1105,6 +1107,7 @@ class Scheduler:
             if seq_group.lora_int_id > 0) if self.lora_enabled else None
 
         logger.debug(f"create empty prefill outputs")
+         # 初始化预填充、运行和交换状态的调度结果
         prefills = SchedulerPrefillOutputs.create_empty()
         logger.debug(f"create empty running outputs")
         running_scheduled = SchedulerRunningOutputs.create_empty()
@@ -1112,12 +1115,14 @@ class Scheduler:
         swapped_in = SchedulerSwappedInOutputs.create_empty()
 
         # If any requests are swapped, prioritized swapped requests.
+        # 若无交换请求，优先处理预填充请求
         if not self.swapped:
             logger.debug(f"schedule swapped seq_groups")
             prefills = self._schedule_prefills(budget,
                                                curr_loras,
                                                enable_chunking=False)
 
+         # 若配置了优先级调度策略，调用调度优先级抢占逻辑
         if len(prefills.seq_groups
                ) == 0 and self.scheduler_config.policy == "priority":
             self._schedule_priority_preemption(budget)
@@ -1125,6 +1130,7 @@ class Scheduler:
         # Don't schedule decodes if prefills are scheduled.
         # NOTE: If `_schedule_prefills` doesn't enable chunking, self.running
         # only contains decode requests, not chunked prefills.
+         # 在没有预填充请求的情况下，执行解码调度
         if len(prefills.seq_groups) == 0:
             logger.debug(f"prefills.seq_groups is empty")
             running_scheduled = self._schedule_running(budget,
@@ -1133,10 +1139,12 @@ class Scheduler:
 
             # If any sequence group is preempted, do not swap in any sequence
             # group. because it means there's no slot for new running requests.
+            # 若解码阶段无资源抢占，继续处理交换请求
             if len(running_scheduled.preempted) + len(
                     running_scheduled.swapped_out) == 0:
                 swapped_in = self._schedule_swapped(budget, curr_loras)
 
+         # 更新 token 预算与当前 sequence 数量，确保预算不超出最大配置
         assert (budget.num_batched_tokens <=
                 self.scheduler_config.max_num_batched_tokens)
         assert budget.num_curr_seqs <= self.scheduler_config.max_num_seqs
@@ -1341,6 +1349,7 @@ class Scheduler:
         # such as self.running, self.swapped, and self.waiting.
         scheduler_start_time = time.perf_counter()
 
+        logger.debug(f"call _schedule")
         scheduler_outputs: SchedulerOutputs = self._schedule()
         logger.debug(f"scheduler_outputs: {scheduler_outputs}")
         now = time.time()
