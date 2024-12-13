@@ -259,7 +259,7 @@ class SingletonInputsAdapter:
 
     @cached_property
     def prompt_token_ids(self) -> List[int]:
-        logger.debug(f"SingletonInputsAdapter.prompt_token_ids: {self.inputs.shape}")
+        logger.debug(f"SingletonInputsAdapter.prompt_token_ids: {self.inputs}")
         inputs = self.inputs
 
         if inputs["type"] == "token" or inputs["type"] == "multimodal":

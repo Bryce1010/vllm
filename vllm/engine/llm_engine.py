@@ -837,9 +837,9 @@ class LLMEngine:
             lora_request=lora_request,
             prompt_adapter_request=prompt_adapter_request,
         )
-        logger.debug(f"preprocessed inputs: shape={preprocessed_inputs.shape}")
+        # logger.debug(f"preprocessed inputs: shape={preprocessed_inputs.shape}")
         processed_inputs = self.input_processor(preprocessed_inputs)
-        logger.debug(f"processed inputs: shape={processed_inputs.shape}")
+        # logger.debug(f"processed inputs: shape={processed_inputs.shape}")
 
         self._add_processed_request(
             request_id=request_id,
@@ -1996,7 +1996,7 @@ class LLMEngine:
 
     def _validate_model_inputs(self, inputs: ProcessorInputs,
                                lora_request: Optional[LoRARequest]):
-        logger.debug(f"Validating model inputs: {inputs.shape}")
+        # logger.debug(f"Validating model inputs: {inputs.shape}")
         if is_encoder_decoder_inputs(inputs):
             # For encoder-decoder multimodal models, the max_prompt_len
             # restricts the decoder prompt length

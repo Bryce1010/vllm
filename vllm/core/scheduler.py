@@ -1037,7 +1037,7 @@ class Scheduler:
             self._allocate_and_set_running(seq_group)
 
             if enable_chunking and self.scheduler_config.is_multi_step:
-                logger.debug(f"enable multi-step: seq_group={seq_group.request_id}, blocks_to_copy={blocks_to_copy}, enable_chunking={enable_chunking}")
+                logger.debug(f"enable multi-step: seq_group={seq_group.request_id}, enable_chunking={enable_chunking}")
                 blocks_to_copy: List[Tuple[int, int]] = []
                 # init_multi_step_from_lookahead_slots happens in append_slots
                 self._append_slots(seq_group, blocks_to_copy, enable_chunking)
@@ -1047,7 +1047,7 @@ class Scheduler:
                 # catch any edge-cases.
                 assert not blocks_to_copy
             else:
-                logger.debug(f"disable multi-step: seq_group={seq_group.request_id}, blocks_to_copy={blocks_to_copy}, enable_chunking={enable_chunking}")
+                logger.debug(f"disable multi-step: seq_group={seq_group.request_id}, enable_chunking={enable_chunking}")
                 seq_group.init_multi_step_from_lookahead_slots(
                     num_lookahead_slots,
                     num_scheduler_steps=self.scheduler_config.
@@ -1480,7 +1480,6 @@ class Scheduler:
         # will crash the vLLM instance / will not retry.
         for scheduled_seq_group in scheduler_outputs.scheduled_seq_groups:
             logger.debug(f"scheduled_seq_group: {scheduled_seq_group}")
-            logger.debug(f"mark_blocks_as_computed: {scheduled_seq_group.seq_group.seq_group}, {scheduled_seq_group.token_chunk_size}")
             self.block_manager.mark_blocks_as_computed(
                 scheduled_seq_group.seq_group,
                 scheduled_seq_group.token_chunk_size)

@@ -775,7 +775,7 @@ class FlashAttentionImpl(AttentionImpl):
                     "Only decoder-only models support prefix caching")
                 assert prefill_meta.seq_lens is not None
                 max_seq_len = max(prefill_meta.seq_lens)
-                logger.debug(f"call flash attn varlen func: {query.shape}, {key_cache.shape}, {value_cache.shape}, {prefill_meta.query_start_loc.shape}, {prefill_meta.max_query_len}, {prefill_meta.seq_start_loc.shape}, {max_seq_len}, {softmax_scale}, {window_size}, {alibi_slopes}, {logits_soft_cap}, {prefill_output.shape}")
+                # logger.debug(f"call flash attn varlen func: {query.shape}, {key_cache.shape}, {value_cache.shape}, {prefill_meta.query_start_loc.shape}, {prefill_meta.max_query_len}, {prefill_meta.seq_start_loc.shape}, {max_seq_len}, {softmax_scale}, {window_size}, {alibi_slopes}, {logits_soft_cap}, {prefill_output.shape}")
                 flash_attn_varlen_func(  # noqa
                     q=query,
                     k=key_cache,
@@ -797,7 +797,7 @@ class FlashAttentionImpl(AttentionImpl):
             # Decoding run.
             # Use flash_attn_varlen_func kernel for speculative decoding
             # because different queries might have different lengths.
-            logger.debug(f"decode run: decode_meta={decode_meta}")
+            # logger.debug(f"decode run: decode_meta={decode_meta}")
 
             assert decode_meta.max_decode_query_len is not None
             # use only for actual varlen decoding
@@ -805,7 +805,7 @@ class FlashAttentionImpl(AttentionImpl):
                 assert attn_type == AttentionType.DECODER, (
                     "Only decoder-only models support max_decode_query_len > 1"
                 )
-                logger.debug(f"call flash attn varlen func for actual varlen decoding: {decode_query.shape}, {key_cache.shape}, {value_cache.shape}, {decode_meta.query_start_loc.shape}, {decode_meta.max_decode_query_len}, {decode_meta.seq_start_loc.shape}, {decode_meta.max_decode_seq_len}, {softmax_scale}, {window_size}, {alibi_slopes}, {logits_soft_cap}, {decode_output.shape}")
+                # logger.debug(f"call flash attn varlen func for actual varlen decoding: {decode_query.shape}, {key_cache.shape}, {value_cache.shape}, {decode_meta.query_start_loc.shape}, {decode_meta.max_decode_query_len}, {decode_meta.seq_start_loc.shape}, {decode_meta.max_decode_seq_len}, {softmax_scale}, {window_size}, {alibi_slopes}, {logits_soft_cap}, {decode_output.shape}")
                 flash_attn_varlen_func(
                     q=decode_query,
                     k=key_cache,
